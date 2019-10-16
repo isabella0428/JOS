@@ -24,7 +24,16 @@ A: Here I read the inline assembly page, which is helpful:D
 
 **Exercise 2.** *Use GDB's si (Step Instruction) command to trace into the ROM BIOS for a few more instructions, and try to guess what it might be doing. You might want to look at [Phil Storrs I/O Ports Description](http://web.archive.org/web/20040404164813/members.iweb.net.au/~pstorr/pcbook/book2/book2.htm), as well as other materials on the [6.828 reference materials page](https://pdos.csail.mit.edu/6.828/2018/reference.html). No need to figure out all the details - just the general idea of what the BIOS is doing first.*
 
-<img src ="/Users/isabella/Library/Application Support/typora-user-images/image-20191013195550087.png" width = 90% align=center>
+```
+(gdb) si
+[f000:d248]	0xfd248:	lidtw	%cs:0x68f8
+0x0000d248 in ??()
+
+(gdb)	si
+[f000:d24e]	0xfd24e:	lgdtw %cs:0x68b4
+0x0000d24e in ??()
+
+```
 
 A: In BIOS, the BIOS initializes hardwares and set up interrupt descriptor table.
 
@@ -36,39 +45,115 @@ A: In BIOS, the BIOS initializes hardwares and set up interrupt descriptor table
 
 *Trace into `bootmain()` in `boot/main.c`, and then into `readsect()`. Identify the exact assembly instructions that correspond to each of the statements in `readsect()`. Trace through the rest of `readsect()` and back out into `bootmain()`, and identify the begin and end of the `for` loop that reads the remaining sectors of the kernel from the disk. Find out what code will run when the loop is finished, set a breakpoint there, and continue to that breakpoint. Then step through the remainder of the boot loader.*
 
+```
+(gdb) b *0x7c00
+Breakpoint 1 at 0x7c00
+(gdb) c
+Continuing.
+[0:7c00] => 0x7c00: cli
+
+Breakpoint 1, 0x00007c00 in ??()
+```
 
 
-<img src="ReadMe.assets/image-20191013200144595.png" align="center">
 
-
-
-A: Set up the breakpoint where the boot sector is going to be loaded and continue executing.
+tA: Set up the breakpoint where the boot sector is going to be loaded and continue executing.
 
 Compare boot.S and boot.asm.We can see the physical addresses in boot.asm
 
-![image-20191013200342543](ReadMe.assets/image-20191013200342543.png)
+```assembly
+  #boot/boot.S
+  .code32                     # Assemble for 32-bit mode
+protcseg:
+  # Set up the protected-mode data segment registers
+  movw    $PROT_MODE_DSEG, %ax    # Our data segment selector
+  movw    %ax, %ds                # -> DS: Data Segment
+  movw    %ax, %es                # -> ES: Extra Segment
+  movw    %ax, %fs                # -> FS
+  movw    %ax, %gs                # -> GS
+  movw    %ax, %ss                # -> SS: Stack Segmen
+```
 
-##### 																				(boot.S)
 
-![image-20191013200421570](ReadMe.assets/image-20191013200421570.png)
 
-##### 																				(boot.asm)
+```assembly
+#obj/boot/boot.asm
+.code32                     # Assemble for 32-bit mode
+protcseg:
+  # Set up the protected-mode data segment registers
+  movw    $PROT_MODE_DSEG, %ax    # Our data segment selector
+    7c32:	66 b8 10 00          	mov    $0x10,%ax
+  movw    %ax, %ds                # -> DS: Data Segment
+    7c36:	8e d8                	mov    %eax,%ds
+  movw    %ax, %es                # -> ES: Extra Segment
+    7c38:	8e c0                	mov    %eax,%es
+  movw    %ax, %fs                # -> FS
+    7c3a:	8e e0                	mov    %eax,%fs
+  movw    %ax, %gs                # -> GS
+    7c3c:	8e e8                	mov    %eax,%gs
+  movw    %ax, %ss                # -> SS: Stack Segment
+    7c3e:	8e d0                	mov    %eax,%ss
+```
+
+##### 																	
 
 Following is the assembly code of readsect function in "boot/main.c"
 
-![image-20191013200719268](ReadMe.assets/image-20191013200719268.png)
+```c
+#obj/boot/boot.asm
+void
+readsect(void *dst, uint32_t offset)
+{
+    7c78:	55                   	push   %ebp
+    7c79:	89 e5                	mov    %esp,%ebp
+    7c7b:	57                   	push   %edi
+    7c7c:	50                   	push   %eax
+    7c7d:	8b 4d 0c             	mov    0xc(%ebp),%ecx
+	// wait for disk to be ready
+	waitdisk();
+    7c80:	e8 e5 ff ff ff       	call   7c6a <waitdisk>
+}
+```
+
+
 
 
 
 Following is the whole loop.
 
-![image-20191013201014740](ReadMe.assets/image-20191013201014740.png)
+```assembly
+#obj/boot/boot.asm
+while (pa < end_pa) {
+    7cf8:	39 f3                	cmp    %esi,%ebx
+    7cfa:	73 15                	jae    7d11 <readseg+0x37>
+		readsect((uint8_t*) pa, offset);
+    7cfc:	50                   	push   %eax
+    7cfd:	50                   	push   %eax
+    7cfe:	57                   	push   %edi
+    7cff:	53                   	push   %ebx
+    7d00:	e8 73 ff ff ff       	call   7c78 <readsect>
+		pa += SECTSIZE;
+    7d05:	81 c3 00 02 00 00    	add    $0x200,%ebx
+		offset++;
+    7d0b:	47                   	inc    %edi
+    7d0c:	83 c4 10             	add    $0x10,%esp
+    7d0f:	eb e7                	jmp    7cf8 <readseg+0x1e>
+}
+```
 
 
 
 When the loop finishes, it will continue execute the following commands.
 
-![image-20191013201219443](ReadMe.assets/image-20191013201219443.png)
+```assembly
+    #obj/boot/boot.asm
+    7d11:	8d 65 f4             	lea    -0xc(%ebp),%esp
+    7d14:	5b                   	pop    %ebx
+    7d15:	5e                   	pop    %esi
+    7d16:	5f                   	pop    %edi
+    7d17:	5d                   	pop    %ebp
+    7d18:	c3                   	ret   
+```
 
 
 
@@ -76,7 +161,21 @@ When the loop finishes, it will continue execute the following commands.
 
 Q1: At what point does the processor start executing 32-bit code? What exactly causes the switch from 16- to 32-bit mode?
 
-  <img src= "/Users/isabella/Library/Application Support/typora-user-images/image-20191013131935427.png" width = 90% align = center>
+  ```assembly
+  # Jump to next instruction, but in 32-bit code segment.
+  # Switches processor into 32-bit mode.
+  ljmp    $PROT_MODE_CSEG, $protcseg
+
+  .code32                     # Assemble for 32-bit mode
+protcseg:
+  # Set up the protected-mode data segment registers
+  movw    $PROT_MODE_DSEG, %ax    # Our data segment selector
+  movw    %ax, %ds                # -> DS: Data Segment
+  movw    %ax, %es                # -> ES: Extra Segment
+  movw    %ax, %fs                # -> FS
+  movw    %ax, %gs                # -> GS
+  movw    %ax, %ss                # -> SS: Stack Segment
+  ```
 
 
 
@@ -88,13 +187,29 @@ After that, all the codes we run are 32 bits.
 
 Q2: What is the *last* instruction of the boot loader executed, and what is the *first* instruction of the kernel it just loaded?
 
-![image-20191013132705437](ReadMe.assets/image-20191013132705437.png)
+```c
+	// boot/main.c
+	// call the entry point from the ELF header
+	// note: does not return!
+	((void (*)(void)) (ELFHDR->e_entry))();
+```
+
+
 
 A: The last instruction the boot loader executed is to call the kernel's entry point	(boot/main.c).
 
 
 
-![image-20191013133431204](ReadMe.assets/image-20191013133431204.png)
+```assembly
+# kern/entry.S
+.globl entry
+entry:
+	movw	$0x1234,0x472			# warm boot
+```
+
+
+
+
 
 The first instruction the kernel executed is in kern/entry.S
 
@@ -130,13 +245,23 @@ A： Since I have already known pointers in c, I didn't spend a lot of time in t
 
 **Exercise 5.** *Trace through the first few instructions of the boot loader again and identify the first instruction that would "break" or otherwise do the wrong thing if you were to get the boot loader's link address wrong. Then change the link address in `boot/Makefrag` to something wrong, run make clean, recompile the lab with make, and trace into the boot loader again to see what happens. Don't forget to change the link address back and make clean again afterward!*
 
-![image-20191013201832427](ReadMe.assets/image-20191013201832427.png)
+```makefile
+# boot/Makefrag
+$(OBJDIR)/boot/boot: $(BOOT_OBJS)
+	@echo + ld boot/boot
+	$(V)$(LD) $(LDFLAGS) -N -e start -Ttext 0x7C00 -o $@.out $^
+	$(V)$(OBJDUMP) -S $@.out >$@.asm
+	$(V)$(OBJCOPY) -S -O binary -j .text $@.out $@
+	$(V)perl boot/sign.pl $(OBJDIR)/boot/boot
+```
+
+
 
 A : Change the boot loader's link address to 0x7C10, which is different from its load address.
 
 Then I `make clean` and `make`, then run `make qemu-nox`, it broke.
 
-![image-20191013202138772](ReadMe.assets/image-20191013202138772.png)
+<img src= "ReadMe.assets/image-20191013202138772.png" width = "80%" align = "center">
 
 
 
@@ -144,7 +269,7 @@ So i decided to let use gdb to debug it.
 
 I let it run without setting points and it seems to break down here.
 
-![image-20191013202322528](ReadMe.assets/image-20191013202322528.png)
+<img src= "ReadMe.assets/image-20191013202322528.png" width = 80% align = "center">
 
 I guess the reason for this is that the memory that `ljmp` want to jump to may causes the trouble. Since the link address we give to the linker mismatches with the load address, the link address calculated by the linker may be totally wrong, which may lead to the problem.
 
@@ -154,11 +279,11 @@ I guess the reason for this is that the memory that `ljmp` want to jump to may c
 
 *Reset the machine (exit QEMU/GDB and start them again). Examine the 8 words of memory at 0x00100000 at the point the BIOS enters the boot loader, and then again at the point the boot loader enters the kernel. Why are they different? What is there at the second breakpoint? (You do not really need to use QEMU to answer this question. Just think.)*
 
-![image-20191013203159056](ReadMe.assets/image-20191013203159056.png)
+<img src = "ReadMe.assets/image-20191013203159056.png" width = 80% align="center">
 
 8 words of memory when the BIOS enters the boot loader.
 
-![image-20191013222802000](ReadMe.assets/image-20191013222802000.png)
+<img src ="ReadMe.assets/image-20191013222802000.png" width="80%" align = "center">
 
 8 words of memory when the boot loader loads the kernel.
 
@@ -176,19 +301,34 @@ The different is that when the boot loader enters the kernel, we've already load
 
 A: Add the breakpoint at `	movl	%cr0, %ea`(f0100025). We can see that the contents in "0x00100000" and "0xf0100000" are different.
 
-![image-20191013223809373](ReadMe.assets/image-20191013223809373.png)
+<img src = "ReadMe.assets/image-20191013223809373.png" width = "80%" align=center>
 
 
 
 Use `stepi` to see the next machine instruction it executes. Now we can see that the contents in "0x00100000" and "0xf0100000" are magically the same! 
 
-![image-20191013224207443](ReadMe.assets/image-20191013224207443.png)
+<img src = "ReadMe.assets/image-20191013224207443.png" width="80%" align="center">
 
 
 
 Here comes the reason.  In line 27, we load the physical address of the entry_pgdir into %eax, and then load it into cr3, which is the page directory register. After line 36, we enable paging by setting %cr0 register. Then the paging starts working and map the physical and virtual address and make sure that the contents in these two address are the same.
 
-![image-20191013225029255](ReadMe.assets/image-20191013225029255.png)
+```assembly
+	#obj/kern/kernel.asm
+	# Load the physical address of entry_pgdir into cr3.  entry_pgdir
+	# is defined in entrypgdir.c.
+	movl	$(RELOC(entry_pgdir)), %eax
+f0100015:	b8 00 00 11 00       	mov    $0x110000,%eax
+	movl	%eax, %cr3
+f010001a:	0f 22 d8             	mov    %eax,%cr3
+	# Turn on paging.
+	movl	%cr0, %eax
+f010001d:	0f 20 c0             	mov    %cr0,%eax
+	orl	$(CR0_PE|CR0_PG|CR0_WP), %eax
+f0100020:	0d 01 00 01 80       	or     $0x80010001,%eax
+	movl	%eax, %cr0
+f0100025:	0f 22 c0             	mov    %eax,%cr0
+```
 
 
 
@@ -198,23 +338,29 @@ Let's see where it will break down.
 
 When it executes until `jmp *%eax`, it breaks.
 
-![image-20191013230646899](ReadMe.assets/image-20191013230646899.png)
+```assembly
+	# obj/kern/kernel.asm
+	# movl	%eax, %cr0
+f0100025:	0f 22 c0             	mov    %eax,%cr0
+
+	# Now paging is enabled, but we're still running at a low EIP
+	# (why is this okay?).  Jump up above KERNBASE before entering
+	# C code.
+	mov	$relocated, %eax
+f0100028:	b8 2f 00 10 f0       	mov    $0xf010002f,%eax
+	jmp	*%eax
+f010002d:	ff e0                	jmp    *%ea
+```
 
 We can see that the value of %eax is "0xf010002c". Since we comment `movl %eax, %cr0`, we don't enable paging. And the address "0xf010002c" is not valid. So it breaks.
 
-![image-20191013230811187](ReadMe.assets/image-20191013230811187.png)
+<img src = "ReadMe.assets/image-20191013230811187.png" width="80%" align="center">
 
 
 
 #### Formatted Printing to the Console
 
 **Exercise 8.** *We have omitted a small fragment of code - the code necessary to print octal numbers using patterns of the form "%o". Find and fill in this code fragment.*
-
-
-
-
-
-
 
 ##### Questions:
 
@@ -226,7 +372,7 @@ The interface between `printf.c` and `console.c` is function `cputchar`, which i
 
 Q2:  *Explain the following from console.c :*
 
-```
+```c
 1      if (crt_pos >= CRT_SIZE) {
 2              int i;
 3              memmove(crt_buf, crt_buf + CRT_COLS, (CRT_SIZE - CRT_COLS) * 					sizeof(uint16_t));
@@ -238,7 +384,11 @@ Q2:  *Explain the following from console.c :*
 
 `CRT_SIZE` is the total character that can be displayed on a single page. 
 
-![image-20191014090555977](ReadMe.assets/image-20191014090555977.png)
+```c
+#define CRT_SIZE	(CRT_ROWS * CRT_COLS)
+```
+
+
 
 After we fill a whole page, we should scroll down a line to allow new characters to be displayed.
 
@@ -295,12 +445,18 @@ Q4:	*Run the following code.*
 
 
 
-A: ![image-20191014140838237](ReadMe.assets/image-20191014140838237.png)
+##### Answer:
+
+```
+x 1, y 3, z 4
+6828 decimal is 15254 octal!
+He110 World
+```
 
 We can see the result of the following code is
 
 ```
-H0xe110 World
+He110 World
 ```
 
 
@@ -309,17 +465,50 @@ H0xe110 World
 
 First `printfmt` meets normal characters like "H", it just prints "H" out normally.
 
-![image-20191014132253299](ReadMe.assets/image-20191014132253299.png)
+```c
+//lib/printfmt.c:vprintfmt
+while (1) {
+		while ((ch = *(unsigned char *) fmt++) != '%') {
+			if (ch == '\0')
+				return;
+			putch(ch, putdat);
+		}
+```
 
 
 
 However when it meets "%x",  it first prints out "0x". Then it treats the following number as unsigned hexadecimal using function `getuint`, finally it prints the number out using function `printnum`.
 
-![image-20191014132352177](ReadMe.assets/image-20191014132352177.png)
+```c
+	// 	lib/printfmt.c:vprintfmt
+	// (unsigned) hexadecimal
+		case 'x':
+			num = getuint(&ap, lflag);
+			base = 16;
+		number:
+			printnum(putch, putdat, num, base, width, padc);
+			break;
+```
+
+
 
 Here we read 57616 and print num in hexadecimal. `57616` is `e110` in hexadecimal.
 
-![image-20191014133446756](ReadMe.assets/image-20191014133446756.png)
+```c
+//lib/printfmt.c
+// Get an unsigned int of various possible sizes from a varargs list,
+// depending on the lflag parameter.
+static unsigned long long
+getuint(va_list *ap, int lflag)
+{
+	if (lflag >= 2)
+		return va_arg(*ap, unsigned long long);
+	else if (lflag)
+		return va_arg(*ap, unsigned long);
+	else
+		return va_arg(*ap, unsigned int);
+}
+```
 
 
 
@@ -334,10 +523,16 @@ According to the ASCII table, we can know that the first character is ` r`, the 
 Q5: *In the following code, what is going to be printed after  'y=' ? (note: the answer is not a specific value.) Why does this happen?*
 
 ```
-    cprintf("x=%d y=%d", 3);
+cprintf("x=%d y=%d", 3);
 ```
 
-![image-20191014140917752](ReadMe.assets/image-20191014140917752.png)
+```
+x 1, y 3, z 4
+6828 decimal is 15254 octal!
+He110 World
+```
+
+
 
 Since we don't give enough parameters to cprintf, when we try to get the second number, va_arg gets the next number although it has been to the end of va_list. It actually depends on the contents in the next  memory block, so it is not a specfic value.
 
@@ -347,7 +542,7 @@ Q6: *Let's say that GCC changed its calling convention so that it pushed argumen
 
 A: If gcc pushes arguments onto stack, the order of the parameters are reversed. If we still want to pass it a variable of arguments, we can send the parameters of `crpintf` to another function so the parameters can be reversed again.
 
-```
+```c
 int
 cprintf(const char *fmt, ...)
 {
@@ -386,19 +581,42 @@ A: According to the comment, we succesffuly figure out that the lower bits of c 
 
  1. In `kern/console.h`, add text_color variable.
 
-    ![image-20191014205059407](ReadMe.assets/image-20191014205059407.png)
+    ```c
+    // kern/console.h
+    int text_color;
+    ```
+
+    
 
 2. Modify the code in `lib/printfmt.c`
 
-   ![image-20191014205146838](ReadMe.assets/image-20191014205146838.png)
+   ```c
+   		// add color
+   		case 'r':
+   			base = 16;
+   			text_color = va_arg(ap, int);
+   			break;
+   ```
+
+   
 
 3. Modify `kern/console.c`
 
-   ![image-20191014205251140](ReadMe.assets/image-20191014205251140.png)
+   ```c
+   	//Modify text_color based on global variable text_color
+   	c |= text_color;
+   ```
+
+   
 
 4. Create test case in `kern/init.c`
 
-   ![image-20191014205331538](ReadMe.assets/image-20191014205331538.png)
+   ```c
+   	//For change color challenge
+   	cprintf("%r%s\n", 0x400, "red");
+   	cprintf("%r%s\n", 0x600, "yellow");
+   	cprintf("%r%s\n", 0x100, "blue");
+   ```
 
    
 
@@ -414,11 +632,29 @@ A: According to the comment, we succesffuly figure out that the lower bits of c 
 
 A :	At line 77 in `entry.S`, stack pointer is set, which means the initialization of the stack.
 
-![image-20191015085748072](ReadMe.assets/image-20191015085748072.png)
+```assembly
+	# Set the stack pointer
+	movl	$(bootstacktop),%es
+```
+
+
 
 These codes in `entry.S` is the detailed description of kernel stack.
 
-![image-20191015090001376](ReadMe.assets/image-20191015090001376.png)
+```assembly
+.data
+###################################################################
+# boot stack
+###################################################################
+	.p2align	PGSHIFT		# force page alignment
+	.globl		bootstack
+bootstack:
+	.space		KSTKSIZE
+	.globl		bootstacktop   
+bootstacktop:
+```
+
+
 
 KSTSIZE is defined in `ibc/memlayout.h`, which defines it to be `8 * PGSIZE`. Then we find in `mmu.h` that `PGSIZE` is `4096 bytes`. So the stack should be located from `0xf0110000` to `0xf0108000`.
 
@@ -432,7 +668,11 @@ The kernel resercves the memory space for the stack by defining `%esp` and `.spa
 
 A :  From reading `kernel.asm`, we find the following address. The function `test_backtrace`' s virtual address is `0xf100040`. 
 
-![image-20191015100807027](ReadMe.assets/image-20191015100807027.png)
+```assembly
+f0100040 <test_backtrace>:
+```
+
+
 
 ​	 `test_backtrace` emulates the procedure of calling a function in c.
 
@@ -502,7 +742,51 @@ A: There is no counter in the assembly code. To solve this limitaion, we can set
 
 
 
-![image-20191015205303525](ReadMe.assets/image-20191015205303525.png)
+```c
+
+// kern/monitor.c
+int
+mon_backtrace(int argc, char **argv, struct Trapframe *tf)
+{
+	// Your code here.
+	uint32_t arg, apm, temp, ebp, eip, esp;
+
+	cprintf("Stack backtrace:\n");
+	//get saved %ebp
+	ebp = read_ebp();
+	//debug info
+	struct Eipdebuginfo info;
+
+		while (ebp != 0)
+	{
+		//Trace back to caller function's %eip
+		eip = *((uint32_t *)ebp + 1);
+		cprintf(" ebp %x eip %x args ", ebp, eip);
+		for(int offset = 2; offset <= 6; offset ++)
+		{
+			arg = *((uint32_t *)ebp + offset);
+			cprintf("%08x ", arg);
+		}
+		cprintf("\n");
+
+		//Print debuging info
+		debuginfo_eip(eip, &info);
+
+		cprintf("  %s:%u: ", info.eip_file, info.eip_line);
+		//print the limit length file name
+		for(int i = 0; i < info.eip_fn_namelen;  ++i) {
+			cprintf("%c", info.eip_fn_name[i]);
+		}
+		cprintf("+%d", eip - info.eip_fn_addr);
+		cprintf("\n");
+		//Trace back to caller function's %ebp
+		ebp =  *((uint32_t *)ebp);
+	}
+	return 0;
+}
+```
+
+
 
 Described in the picture above, I give my solution to the exercise.
 
@@ -566,23 +850,78 @@ You may find that some functions are missing from the backtrace. For example, yo
 
    There are many `__STAB_*` in kernel.ld. The following pic just shows a small portion of it.
 
-   ![image-20191016103628552](ReadMe.assets/image-20191016103628552.png)
+   ```
+   	/* Include debugging information in kernel memory */
+   	.stab : {
+   		PROVIDE(__STAB_BEGIN__ = .);
+   		*(.stab);
+   		PROVIDE(__STAB_END__ = .);
+   		BYTE(0)		/* Force the linker to allocate space
+   				   for this section */
+   	}
+   ```
 
 2. run `objdump -h obj/kern/kernel`
 
    Display the sections in kernel elf.
 
-![image-20191016100655540](ReadMe.assets/image-20191016100655540.png)
+```
+obj/kern/kernel:        file format ELF32-i386
+
+Sections:
+Idx Name          Size      Address          Type
+  0               00000000 0000000000000000 
+  1 .text         00001936 00000000f0100000 TEXT DATA 
+  2 .rodata       00000790 00000000f0101940 DATA 
+  3 .stab         00004495 00000000f01020d0 DATA 
+  4 .stabstr      00001990 00000000f0106565 
+  5 .data         0000a300 00000000f0108000 DATA 
+  6 .bss          0000064c 00000000f0112300 DATA 
+  7 .comment      00000011 0000000000000000 
+  8 .debug_info   00001811 0000000000000000 
+```
+
+
 
 2. Run `objdump -G obj/kern/kernel` , we print any stabs in kernel.
 
-   ![image-20191016101447188](ReadMe.assets/image-20191016101447188.png)
+   ```
+   ...............
+   1383   LBRAC  0      0      00000000 0      
+   1384   RBRAC  0      0      00000033 0      
+   1385   FUN    0      0      f0101626 6412   memfind:F(0,25)
+   1386   PSYM   0      0      00000008 6428   s:p(0,26)
+   1387   PSYM   0      0      0000000c 3401   c:p(0,1)
+   1388   PSYM   0      0      00000010 6123   n:p(2,16)
+   1389   SLINE  0      231    00000000 0      
+   1390   SLINE  0      232    00000009 0      
+   1391   SLINE  0      233    0000000e 0     
+   .................
+   ```
+
+   
 
 3. run `gcc -pipe -nostdinc -O2 -fno-builtin -I. -MD -Wall -Wno-format -DJOS_KERNEL -gstabs -c -S kern/init.c`
 
    After running the command, it prints debugging info in stab format into `init.S` located in lab1 folder.
 
-   ![image-20191016102622187](ReadMe.assets/image-20191016102622187.png)
+   ```
+   	.file	"init.c"
+   	.stabs	"kern/init.c",100,0,2,.Ltext0
+   	.text
+   .Ltext0:
+   	.stabs	"gcc2_compiled.",60,0,0,0
+   	.stabs	"int:t(0,1)=r(0,1);-2147483648;2147483647;",128,0,0,0
+   	.stabs	"char:t(0,2)=r(0,2);0;127;",128,0,0,0
+   	.stabs	"long int:t(0,3)=r(0,3);-2147483648;2147483647;",128,0,0,0
+   	.stabs	"unsigned int:t(0,4)=r(0,4);0;4294967295;",128,0,0,0
+   	.stabs	"long unsigned int:t(0,5)=r(0,5);0;4294967295;",128,0,0,0
+   	.stabs	"__int128:t(0,6)=r(0,6);0;-1;",128,0,0,0
+   	.stabs	"__int128 unsigned:t(0,7)=r(0,7);0;-1;",128,0,0,0
+   	...................
+   ```
+
+   
 
 4.  See if the bootloader loads the symbol table in memory as part of loading the kernel binary
 
