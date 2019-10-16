@@ -46,12 +46,12 @@ i386_init(void)
 	cprintf("x=%d y=%d\n", 3);
 
 	//For change color challenge
-	cprintf("%r%s\n", 0x400, "red");
-	cprintf("%r%s\n", 0x600, "yellow");
-	cprintf("%r%s\n", 0x100, "blue");
+	cprintf("          %r%s\n", 0x400, "red");
+	cprintf("          %r%s\n", 0x200, "green");
+	cprintf("          %r%s\n", 0x100, "blue");
 
 	// Test the stack backtrace function (lab 1 only)
-	test_backtrace(5);
+	//test_backtrace(5);
 
 	// Drop into the kernel monitor.
 	while (1)
