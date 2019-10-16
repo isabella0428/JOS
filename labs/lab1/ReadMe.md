@@ -38,7 +38,7 @@ A: In BIOS, the BIOS initializes hardwares and set up interrupt descriptor table
 
 
 
-<img src="/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191013200144595.png" align="center">
+<img src="ReadMe.assets/image-20191013200144595.png" align="center">
 
 
 
@@ -46,29 +46,29 @@ A: Set up the breakpoint where the boot sector is going to be loaded and continu
 
 Compare boot.S and boot.asm.We can see the physical addresses in boot.asm
 
-![image-20191013200342543](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191013200342543.png)
+![image-20191013200342543](ReadMe.assets/image-20191013200342543.png)
 
 ##### 																				(boot.S)
 
-![image-20191013200421570](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191013200421570.png)
+![image-20191013200421570](ReadMe.assets/image-20191013200421570.png)
 
 ##### 																				(boot.asm)
 
 Following is the assembly code of readsect function in "boot/main.c"
 
-![image-20191013200719268](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191013200719268.png)
+![image-20191013200719268](ReadMe.assets/image-20191013200719268.png)
 
 
 
 Following is the whole loop.
 
-![image-20191013201014740](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191013201014740.png)
+![image-20191013201014740](ReadMe.assets/image-20191013201014740.png)
 
 
 
 When the loop finishes, it will continue execute the following commands.
 
-![image-20191013201219443](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191013201219443.png)
+![image-20191013201219443](ReadMe.assets/image-20191013201219443.png)
 
 
 
@@ -88,13 +88,13 @@ After that, all the codes we run are 32 bits.
 
 Q2: What is the *last* instruction of the boot loader executed, and what is the *first* instruction of the kernel it just loaded?
 
-![image-20191013132705437](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191013132705437.png)
+![image-20191013132705437](ReadMe.assets/image-20191013132705437.png)
 
 A: The last instruction the boot loader executed is to call the kernel's entry point	(boot/main.c).
 
 
 
-![image-20191013133431204](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191013133431204.png)
+![image-20191013133431204](ReadMe.assets/image-20191013133431204.png)
 
 The first instruction the kernel executed is in kern/entry.S
 
@@ -130,13 +130,13 @@ A： Since I have already known pointers in c, I didn't spend a lot of time in t
 
 **Exercise 5.** *Trace through the first few instructions of the boot loader again and identify the first instruction that would "break" or otherwise do the wrong thing if you were to get the boot loader's link address wrong. Then change the link address in `boot/Makefrag` to something wrong, run make clean, recompile the lab with make, and trace into the boot loader again to see what happens. Don't forget to change the link address back and make clean again afterward!*
 
-![image-20191013201832427](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191013201832427.png)
+![image-20191013201832427](ReadMe.assets/image-20191013201832427.png)
 
 A : Change the boot loader's link address to 0x7C10, which is different from its load address.
 
 Then I `make clean` and `make`, then run `make qemu-nox`, it broke.
 
-![image-20191013202138772](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191013202138772.png)
+![image-20191013202138772](ReadMe.assets/image-20191013202138772.png)
 
 
 
@@ -144,7 +144,7 @@ So i decided to let use gdb to debug it.
 
 I let it run without setting points and it seems to break down here.
 
-![image-20191013202322528](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191013202322528.png)
+![image-20191013202322528](ReadMe.assets/image-20191013202322528.png)
 
 I guess the reason for this is that the memory that `ljmp` want to jump to may causes the trouble. Since the link address we give to the linker mismatches with the load address, the link address calculated by the linker may be totally wrong, which may lead to the problem.
 
@@ -154,11 +154,11 @@ I guess the reason for this is that the memory that `ljmp` want to jump to may c
 
 *Reset the machine (exit QEMU/GDB and start them again). Examine the 8 words of memory at 0x00100000 at the point the BIOS enters the boot loader, and then again at the point the boot loader enters the kernel. Why are they different? What is there at the second breakpoint? (You do not really need to use QEMU to answer this question. Just think.)*
 
-![image-20191013203159056](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191013203159056.png)
+![image-20191013203159056](ReadMe.assets/image-20191013203159056.png)
 
 8 words of memory when the BIOS enters the boot loader.
 
-![image-20191013222802000](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191013222802000.png)
+![image-20191013222802000](ReadMe.assets/image-20191013222802000.png)
 
 8 words of memory when the boot loader loads the kernel.
 
@@ -176,19 +176,19 @@ The different is that when the boot loader enters the kernel, we've already load
 
 A: Add the breakpoint at `	movl	%cr0, %ea`(f0100025). We can see that the contents in "0x00100000" and "0xf0100000" are different.
 
-![image-20191013223809373](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191013223809373.png)
+![image-20191013223809373](ReadMe.assets/image-20191013223809373.png)
 
 
 
 Use `stepi` to see the next machine instruction it executes. Now we can see that the contents in "0x00100000" and "0xf0100000" are magically the same! 
 
-![image-20191013224207443](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191013224207443.png)
+![image-20191013224207443](ReadMe.assets/image-20191013224207443.png)
 
 
 
 Here comes the reason.  In line 27, we load the physical address of the entry_pgdir into %eax, and then load it into cr3, which is the page directory register. After line 36, we enable paging by setting %cr0 register. Then the paging starts working and map the physical and virtual address and make sure that the contents in these two address are the same.
 
-![image-20191013225029255](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191013225029255.png)
+![image-20191013225029255](ReadMe.assets/image-20191013225029255.png)
 
 
 
@@ -198,11 +198,11 @@ Let's see where it will break down.
 
 When it executes until `jmp *%eax`, it breaks.
 
-![image-20191013230646899](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191013230646899.png)
+![image-20191013230646899](ReadMe.assets/image-20191013230646899.png)
 
 We can see that the value of %eax is "0xf010002c". Since we comment `movl %eax, %cr0`, we don't enable paging. And the address "0xf010002c" is not valid. So it breaks.
 
-![image-20191013230811187](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191013230811187.png)
+![image-20191013230811187](ReadMe.assets/image-20191013230811187.png)
 
 
 
@@ -238,7 +238,7 @@ Q2:  *Explain the following from console.c :*
 
 `CRT_SIZE` is the total character that can be displayed on a single page. 
 
-![image-20191014090555977](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191014090555977.png)
+![image-20191014090555977](ReadMe.assets/image-20191014090555977.png)
 
 After we fill a whole page, we should scroll down a line to allow new characters to be displayed.
 
@@ -295,7 +295,7 @@ Q4:	*Run the following code.*
 
 
 
-A: ![image-20191014140838237](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191014140838237.png)
+A: ![image-20191014140838237](ReadMe.assets/image-20191014140838237.png)
 
 We can see the result of the following code is
 
@@ -309,17 +309,17 @@ H0xe110 World
 
 First `printfmt` meets normal characters like "H", it just prints "H" out normally.
 
-![image-20191014132253299](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191014132253299.png)
+![image-20191014132253299](ReadMe.assets/image-20191014132253299.png)
 
 
 
 However when it meets "%x",  it first prints out "0x". Then it treats the following number as unsigned hexadecimal using function `getuint`, finally it prints the number out using function `printnum`.
 
-![image-20191014132352177](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191014132352177.png)
+![image-20191014132352177](ReadMe.assets/image-20191014132352177.png)
 
 Here we read 57616 and print num in hexadecimal. `57616` is `e110` in hexadecimal.
 
-![image-20191014133446756](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191014133446756.png)
+![image-20191014133446756](ReadMe.assets/image-20191014133446756.png)
 
 
 
@@ -337,7 +337,7 @@ Q5: *In the following code, what is going to be printed after  'y=' ? (note: the
     cprintf("x=%d y=%d", 3);
 ```
 
-![image-20191014140917752](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191014140917752.png)
+![image-20191014140917752](ReadMe.assets/image-20191014140917752.png)
 
 Since we don't give enough parameters to cprintf, when we try to get the second number, va_arg gets the next number although it has been to the end of va_list. It actually depends on the contents in the next  memory block, so it is not a specfic value.
 
@@ -386,25 +386,25 @@ A: According to the comment, we succesffuly figure out that the lower bits of c 
 
  1. In `kern/console.h`, add text_color variable.
 
-    ![image-20191014205059407](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191014205059407.png)
+    ![image-20191014205059407](ReadMe.assets/image-20191014205059407.png)
 
 2. Modify the code in `lib/printfmt.c`
 
-   ![image-20191014205146838](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191014205146838.png)
+   ![image-20191014205146838](ReadMe.assets/image-20191014205146838.png)
 
 3. Modify `kern/console.c`
 
-   ![image-20191014205251140](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191014205251140.png)
+   ![image-20191014205251140](ReadMe.assets/image-20191014205251140.png)
 
 4. Create test case in `kern/init.c`
 
-   ![image-20191014205331538](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191014205331538.png)
+   ![image-20191014205331538](ReadMe.assets/image-20191014205331538.png)
 
    
 
 5. Finally the result
 
-   ![image-20191014205414215](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191014205414215.png)
+   ![image-20191014205414215](ReadMe.assets/image-20191014205414215.png)
 
 
 
@@ -414,11 +414,11 @@ A: According to the comment, we succesffuly figure out that the lower bits of c 
 
 A :	At line 77 in `entry.S`, stack pointer is set, which means the initialization of the stack.
 
-![image-20191015085748072](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191015085748072.png)
+![image-20191015085748072](ReadMe.assets/image-20191015085748072.png)
 
 These codes in `entry.S` is the detailed description of kernel stack.
 
-![image-20191015090001376](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191015090001376.png)
+![image-20191015090001376](ReadMe.assets/image-20191015090001376.png)
 
 KSTSIZE is defined in `ibc/memlayout.h`, which defines it to be `8 * PGSIZE`. Then we find in `mmu.h` that `PGSIZE` is `4096 bytes`. So the stack should be located from `0xf0110000` to `0xf0108000`.
 
@@ -432,7 +432,7 @@ The kernel resercves the memory space for the stack by defining `%esp` and `.spa
 
 A :  From reading `kernel.asm`, we find the following address. The function `test_backtrace`' s virtual address is `0xf100040`. 
 
-![image-20191015100807027](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191015100807027.png)
+![image-20191015100807027](ReadMe.assets/image-20191015100807027.png)
 
 ​	 `test_backtrace` emulates the procedure of calling a function in c.
 
@@ -502,13 +502,13 @@ A: There is no counter in the assembly code. To solve this limitaion, we can set
 
 
 
-![image-20191015205303525](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191015205303525.png)
+![image-20191015205303525](ReadMe.assets/image-20191015205303525.png)
 
 Described in the picture above, I give my solution to the exercise.
 
 It is about the gcc calling convention.
 
-![image-20191015205424383](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191015205424383.png)
+![image-20191015205424383](ReadMe.assets/image-20191015205424383.png)
 
 When the caller wants to call another function, it first pushes the arguments and instruction pointer onto the stack. In the callee function, we saves the `%ebp` register value onto stack. The value of callee's 
 
@@ -566,23 +566,23 @@ You may find that some functions are missing from the backtrace. For example, yo
 
    There are many `__STAB_*` in kernel.ld. The following pic just shows a small portion of it.
 
-   ![image-20191016103628552](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191016103628552.png)
+   ![image-20191016103628552](ReadMe.assets/image-20191016103628552.png)
 
 2. run `objdump -h obj/kern/kernel`
 
    Display the sections in kernel elf.
 
-![image-20191016100655540](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191016100655540.png)
+![image-20191016100655540](ReadMe.assets/image-20191016100655540.png)
 
 2. Run `objdump -G obj/kern/kernel` , we print any stabs in kernel.
 
-   ![image-20191016101447188](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191016101447188.png)
+   ![image-20191016101447188](ReadMe.assets/image-20191016101447188.png)
 
 3. run `gcc -pipe -nostdinc -O2 -fno-builtin -I. -MD -Wall -Wno-format -DJOS_KERNEL -gstabs -c -S kern/init.c`
 
    After running the command, it prints debugging info in stab format into `init.S` located in lab1 folder.
 
-   ![image-20191016102622187](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191016102622187.png)
+   ![image-20191016102622187](ReadMe.assets/image-20191016102622187.png)
 
 4.  See if the bootloader loads the symbol table in memory as part of loading the kernel binary
 
