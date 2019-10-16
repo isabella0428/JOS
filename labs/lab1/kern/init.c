@@ -51,7 +51,7 @@ i386_init(void)
 	cprintf("          %r%s\n", 0x100, "blue");
 
 	// Test the stack backtrace function (lab 1 only)
-	//test_backtrace(5);
+	test_backtrace(5);
 
 	// Drop into the kernel monitor.
 	while (1)
