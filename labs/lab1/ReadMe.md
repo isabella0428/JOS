@@ -18,7 +18,11 @@ Get familiar with assembly codes.
 
 *We do recommend reading the section "The Syntax" in [Brennan's Guide to Inline Assembly](http://www.delorie.com/djgpp/doc/brennan/brennan_att_inline_djgpp.html). It gives a good (and quite brief) description of the AT&T assembly syntax we'll be using with the GNU assembler in JOS.*
 
-A: Here I read the inline assembly page, which is helpful:D
+
+
+##### Answer
+
+ Here I read the inline assembly page, which is helpful:D
 
 
 
@@ -35,7 +39,11 @@ A: Here I read the inline assembly page, which is helpful:D
 
 ```
 
-A: In BIOS, the BIOS initializes hardwares and set up interrupt descriptor table.
+
+
+##### Answer
+
+ In BIOS, the BIOS initializes hardwares and set up interrupt descriptor table.
 
 
 
@@ -44,6 +52,12 @@ A: In BIOS, the BIOS initializes hardwares and set up interrupt descriptor table
 *Set a breakpoint at address 0x7c00, which is where the boot sector will be loaded. Continue execution until that breakpoint. Trace through the code in `boot/boot.S`, using the source code and the disassembly file `obj/boot/boot.asm` to keep track of where you are. Also use the `x/i` command in GDB to disassemble sequences of instructions in the boot loader, and compare the original boot loader source code with both the disassembly in `obj/boot/boot.asm` and GDB.*
 
 *Trace into `bootmain()` in `boot/main.c`, and then into `readsect()`. Identify the exact assembly instructions that correspond to each of the statements in `readsect()`. Trace through the rest of `readsect()` and back out into `bootmain()`, and identify the begin and end of the `for` loop that reads the remaining sectors of the kernel from the disk. Find out what code will run when the loop is finished, set a breakpoint there, and continue to that breakpoint. Then step through the remainder of the boot loader.*
+
+
+
+##### Answer
+
+Set up the breakpoint where the boot sector is going to be loaded and continue executing.
 
 ```
 (gdb) b *0x7c00
@@ -56,8 +70,6 @@ Breakpoint 1, 0x00007c00 in ??()
 ```
 
 
-
-tA: Set up the breakpoint where the boot sector is going to be loaded and continue executing.
 
 Compare boot.S and boot.asm.We can see the physical addresses in boot.asm
 
@@ -117,8 +129,6 @@ readsect(void *dst, uint32_t offset)
 
 
 
-
-
 Following is the whole loop.
 
 ```assembly
@@ -159,7 +169,9 @@ When the loop finishes, it will continue execute the following commands.
 
 #### Questions
 
-Q1: At what point does the processor start executing 32-bit code? What exactly causes the switch from 16- to 32-bit mode?
+##### Question1
+
+At what point does the processor start executing 32-bit code? What exactly causes the switch from 16- to 32-bit mode?
 
   ```assembly
   # Jump to next instruction, but in 32-bit code segment.
@@ -179,13 +191,21 @@ protcseg:
 
 
 
-A: After setting the CR0 register to enable 32 bit mode and giving the command to load the gdt table, we still need to change the segment register's value in order to actually start loading, which is accomplished with `  	ljmp    $PROT_MODE_CSEG, $protcseg`
+##### Answer
+
+After setting the CR0 register to enable 32 bit mode and giving the command to load the gdt table, we still need to change the segment register's value in order to actually start loading, which is accomplished with `  	ljmp    $PROT_MODE_CSEG, $protcseg`
 
 After that, all the codes we run are 32 bits.
 
 
 
-Q2: What is the *last* instruction of the boot loader executed, and what is the *first* instruction of the kernel it just loaded?
+##### Question2
+
+What is the *last* instruction of the boot loader executed, and what is the *first* instruction of the kernel it just loaded?
+
+##### Answer
+
+The last instruction the boot loader executed is to call the kernel's entry point	(boot/main.c).
 
 ```c
 	// boot/main.c
@@ -194,11 +214,7 @@ Q2: What is the *last* instruction of the boot loader executed, and what is the 
 	((void (*)(void)) (ELFHDR->e_entry))();
 ```
 
-
-
-A: The last instruction the boot loader executed is to call the kernel's entry point	(boot/main.c).
-
-
+The first instruction the kernel executed is in kern/entry.S
 
 ```assembly
 # kern/entry.S
@@ -209,23 +225,25 @@ entry:
 
 
 
+##### Question3
 
+*Where* is the first instruction of the kernel?
 
-The first instruction the kernel executed is in kern/entry.S
+##### Answer
 
+The first instruction of the kernel is located in "kern/entry.S"
 
-
-Q3: 	*Where* is the first instruction of the kernel?
-
-A: The first instruction of the kernel is located in "kern/entry.S"
-
-​	Its physical address is 0x10000c.
+Its physical address is 0x10000c.
 
 
 
-Q4:	How does the boot loader decide how many sectors it must read in order to fetch the entire kernel from disk? Where does it find this information?
+##### Question4
 
-A:	The boot loader first read the second sector from disk(the first one is the boot loader) into memory, the second 4096 bytes(512 * 8), which contains the elf header. Based on the elf header, we can know the info we need to copy the entire kernel into memory.
+How does the boot loader decide how many sectors it must read in order to fetch the entire kernel from disk? Where does it find this information?
+
+##### Answer
+
+The boot loader first read the second sector from disk(the first one is the boot loader) into memory, the second 4096 bytes(512 * 8), which contains the elf header. Based on the elf header, we can know the info we need to copy the entire kernel into memory.
 
 
 
@@ -239,7 +257,9 @@ A:	The boot loader first read the second sector from disk(the first one is the b
 
 *Warning: Unless you are already thoroughly versed in C, do not skip or even skim this reading exercise. If you do not really understand pointers in C, you will suffer untold pain and misery in subsequent labs, and then eventually come to understand them the hard way. Trust us; you don't want to find out what "the hard way" is.*
 
-A： Since I have already known pointers in c, I didn't spend a lot of time in this part.
+##### Answer
+
+Since I have already known pointers in c, I didn't spend a lot of time in this part.
 
 
 
@@ -257,11 +277,42 @@ $(OBJDIR)/boot/boot: $(BOOT_OBJS)
 
 
 
-A : Change the boot loader's link address to 0x7C10, which is different from its load address.
+##### Answer
+
+Change the boot loader's link address to 0x7C10, which is different from its load address.
 
 Then I `make clean` and `make`, then run `make qemu-nox`, it broke.
 
-<img src= "ReadMe.assets/image-20191013202138772.png" width = "80%" align = "center">
+```
+(base) ➜  lab1 git:(master) ✗ make qemu-nox
+sed "s/localhost:1234/localhost:25501/" < .gdbinit.tmpl > .gdbinit
+
+(process:53996): GLib-WARNING **: 17:06:34.848: ../glib/gmem.c:490: custom memory allocation vtable not supported
+***
+*** Use Ctrl-a x to exit qemu
+***
+qemu-system-i386 -nographic -drive file=obj/kern/kernel.img,index=0,media=disk,format=raw -serial mon:stdio -gdb tcp::25501 -D qemu.log 
+
+(process:54001): GLib-WARNING **: 17:06:34.918: ../glib/gmem.c:490: custom memory allocation vtable not supported
+EAX=00000011 EBX=00000000 ECX=00000000 EDX=00000080
+ESI=00000000 EDI=00000000 EBP=00000000 ESP=00006f20
+EIP=00007c2d EFL=00000006 [-----P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =0000 00000000 0000ffff 00009300 DPL=0 DS16 [-WA]
+CS =0000 00000000 0000ffff 00009b00 DPL=0 CS16 [-RA]
+SS =0000 00000000 0000ffff 00009300 DPL=0 DS16 [-WA]
+DS =0000 00000000 0000ffff 00009300 DPL=0 DS16 [-WA]
+FS =0000 00000000 0000ffff 00009300 DPL=0 DS16 [-WA]
+GS =0000 00000000 0000ffff 00009300 DPL=0 DS16 [-WA]
+LDT=0000 00000000 0000ffff 00008200 DPL=0 LDT
+TR =0000 00000000 0000ffff 00008b00 DPL=0 TSS32-busy
+GDT=     0055c3f8 00007540
+IDT=     00000000 000003ff
+CR0=00000011 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+EFER=0000000000000000
+Triple fault.  Halting for inspection via QEMU monitor.
+```
 
 
 
@@ -269,7 +320,16 @@ So i decided to let use gdb to debug it.
 
 I let it run without setting points and it seems to break down here.
 
-<img src= "ReadMe.assets/image-20191013202322528.png" width = 80% align = "center">
+```
+(gdb) c
+Continuing.
+
+Program received signal SIGTRAP, Trace/breakpoint trap.
+[   0:7c2d] => 0x7c2d:  ljmp   $0x8,$0x7c42
+0x00007c2d in ?? ()
+```
+
+
 
 I guess the reason for this is that the memory that `ljmp` want to jump to may causes the trouble. Since the link address we give to the linker mismatches with the load address, the link address calculated by the linker may be totally wrong, which may lead to the problem.
 
@@ -279,13 +339,44 @@ I guess the reason for this is that the memory that `ljmp` want to jump to may c
 
 *Reset the machine (exit QEMU/GDB and start them again). Examine the 8 words of memory at 0x00100000 at the point the BIOS enters the boot loader, and then again at the point the boot loader enters the kernel. Why are they different? What is there at the second breakpoint? (You do not really need to use QEMU to answer this question. Just think.)*
 
-<img src = "ReadMe.assets/image-20191013203159056.png" width = 80% align="center">
 
-8 words of memory when the BIOS enters the boot loader.
 
-<img src ="ReadMe.assets/image-20191013222802000.png" width="80%" align = "center">
+##### Answer
 
-8 words of memory when the boot loader loads the kernel.
+8 words of memory when the **BIOS enters the boot loader**.
+
+```
+(gdb) b *0x7c00
+Breakpoint 1 at 0x7c00
+(gdb) c
+Continuing.
+[   0:7c00] => 0x7c00:  cli    
+
+Breakpoint 1, 0x00007c00 in ?? ()
+(gdb) x/8x *0x100000
+0x0:    0xf000ff53      0xf000ff53      0xf000e2c3      0xf000ff53
+0x10:   0xf000ff53      0xf000ff53      0xf000ff53      0xf000ff53
+```
+
+
+
+8 words of memory when **boot loader loads the kernel**.
+
+```
+(gdb) b *0x10000c
+Breakpoint 1 at 0x10000c
+(gdb) c
+Continuing.
+The target architecture is assumed to be i386
+=> 0x10000c:    movw   $0x1234,0x472
+
+Breakpoint 1, 0x0010000c in ?? ()
+(gdb) x/8x 0x100000
+0x100000:       0x1badb002      0x00000000      0xe4524ffe    0x7205c766
+0x100010:       0x34000004      0x0000b812      0x220f0011    0xc0200fd8
+```
+
+
 
 The different is that when the boot loader enters the kernel, we've already loaded the kernel to 0x00100000.
 
@@ -297,17 +388,38 @@ The different is that when the boot loader enters the kernel, we've already load
 
 *What is the first instruction after the new mapping is established that would fail to work properly if the mapping weren't in place? Comment out the `movl %eax, %cr0` in `kern/entry.S`, trace into it, and see if you were right.*
 
+##### Answer
 
+Add the breakpoint at `	movl	%cr0, %ea`(f0100025). We can see that the contents in "0x00100000" and "0xf0100000" are different.
 
-A: Add the breakpoint at `	movl	%cr0, %ea`(f0100025). We can see that the contents in "0x00100000" and "0xf0100000" are different.
+```
+(gdb) b *0x100025
+Breakpoint 1 at 0x100025
+(gdb) c
+Continuing.
+The target architecture is assumed to be i386
+=> 0x100025:    mov    %eax,%cr0
 
-<img src = "ReadMe.assets/image-20191013223809373.png" width = "80%" align=center>
+Breakpoint 1, 0x00100025 in ?? ()
+(gdb) x/x 0x100000
+0x100000:       0x1badb002
+(gdb) x/x 0xf0100000
+0xf0100000 <_start+4026531828>: 0x00000000
+```
 
 
 
 Use `stepi` to see the next machine instruction it executes. Now we can see that the contents in "0x00100000" and "0xf0100000" are magically the same! 
 
-<img src = "ReadMe.assets/image-20191013224207443.png" width="80%" align="center">
+```
+(gdb) stepi
+=> 0x100028:    mov    $0xf010002f,%eax
+0x00100028 in ?? ()
+(gdb) x/x 0x100000
+0x100000:       0x1badb002
+(gdb) x/x 0xf0100000
+0xf0100000 <_start+4026531828>: 0x1badb002
+```
 
 
 
@@ -354,7 +466,13 @@ f010002d:	ff e0                	jmp    *%ea
 
 We can see that the value of %eax is "0xf010002c". Since we comment `movl %eax, %cr0`, we don't enable paging. And the address "0xf010002c" is not valid. So it breaks.
 
-<img src = "ReadMe.assets/image-20191013230811187.png" width="80%" align="center">
+```
+(gdb)	info register
+eax		0xf010002c		-267386836
+ecx		0x0						0
+edx		0xffffff40		-192
+ebx		0x10074				65652
+```
 
 
 
@@ -364,13 +482,19 @@ We can see that the value of %eax is "0xf010002c". Since we comment `movl %eax, 
 
 ##### Questions:
 
-Q1: *Explain the interface between `printf.c` and `console.c`. Specifically, what function does `console.c` export? How is this function used by `printf.c`?*
+##### Question1
+
+*Explain the interface between `printf.c` and `console.c`. Specifically, what function does `console.c` export? How is this function used by `printf.c`?*
+
+##### Answer
 
 The interface between `printf.c` and `console.c` is function `cputchar`, which is exported from `console.c` and used by `printf.c`. `printf.c` uses `cputchar` to print the character.
 
 
 
-Q2:  *Explain the following from console.c :*
+##### Question2
+
+*Explain the following from console.c :*
 
 ```c
 1      if (crt_pos >= CRT_SIZE) {
@@ -388,7 +512,7 @@ Q2:  *Explain the following from console.c :*
 #define CRT_SIZE	(CRT_ROWS * CRT_COLS)
 ```
 
-
+##### Answer
 
 After we fill a whole page, we should scroll down a line to allow new characters to be displayed.
 
@@ -396,7 +520,9 @@ And we initialize the last line  to be spaces.
 
 
 
-Q3: *For the following questions you might wish to consult the notes for Lecture 2. These notes cover GCC's calling convention on the x86.*
+##### Question3
+
+*For the following questions you might wish to consult the notes for Lecture 2. These notes cover GCC's calling convention on the x86.*
 
 *Trace the execution of the following code step-by-step:*
 
@@ -410,7 +536,9 @@ cprintf("x %d, y %x, z %d\n", x, y, z);
 
 
 
-A: `fmt` points to `"x %d, y %x, z %d\n"` , ap is of type `va_list` and carrys the function arguments.
+##### Answer
+
+ `fmt` points to `"x %d, y %x, z %d\n"` , ap is of type `va_list` and carrys the function arguments.
 
 ​	 Call in order:
 
@@ -428,7 +556,9 @@ cons_putc (c=980)
 
 
 
-Q4:	*Run the following code.*
+##### Question4
+
+*Run the following code.*
 
 ```
     unsigned int i = 0x00646c72;
@@ -442,8 +572,6 @@ Q4:	*Run the following code.*
 *The output depends on that fact that the x86 is little-endian. If the x86 were instead big-endian what would you set `i` to in order to yield the same output? Would you need to change `57616` to a different value?*
 
 [Here's a description of little- and big-endian](http://www.webopedia.com/TERM/b/big_endian.html) and [a more whimsical description](http://www.networksorcery.com/enp/ien/ien137.txt).
-
-
 
 ##### Answer:
 
@@ -461,7 +589,7 @@ He110 World
 
 
 
- Let us dive a little bit deeper.
+Let us dive a little bit deeper.
 
 First `printfmt` meets normal characters like "H", it just prints "H" out normally.
 
@@ -520,7 +648,11 @@ According to the ASCII table, we can know that the first character is ` r`, the 
 
 
 
-Q5: *In the following code, what is going to be printed after  'y=' ? (note: the answer is not a specific value.) Why does this happen?*
+##### Question5
+
+*In the following code, what is going to be printed after  'y=' ? (note: the answer is not a specific value.) Why does this happen?*
+
+##### Answer
 
 ```
 cprintf("x=%d y=%d", 3);
@@ -532,15 +664,17 @@ x 1, y 3, z 4
 He110 World
 ```
 
-
-
 Since we don't give enough parameters to cprintf, when we try to get the second number, va_arg gets the next number although it has been to the end of va_list. It actually depends on the contents in the next  memory block, so it is not a specfic value.
 
 
 
-Q6: *Let's say that GCC changed its calling convention so that it pushed arguments on the stack in declaration order, so that the last argument is pushed last. How would you have to change `cprintf` or its interface so that it would still be possible to pass it a variable number of arguments?*
+##### Question6
 
-A: If gcc pushes arguments onto stack, the order of the parameters are reversed. If we still want to pass it a variable of arguments, we can send the parameters of `crpintf` to another function so the parameters can be reversed again.
+*Let's say that GCC changed its calling convention so that it pushed arguments on the stack in declaration order, so that the last argument is pushed last. How would you have to change `cprintf` or its interface so that it would still be possible to pass it a variable number of arguments?*
+
+##### Answer
+
+If gcc pushes arguments onto stack, the order of the parameters are reversed. If we still want to pass it a variable of arguments, we can send the parameters of `crpintf` to another function so the parameters can be reversed again.
 
 ```c
 int
@@ -573,7 +707,9 @@ if(~(c & ~(0xff))){
 
 
 
-A: According to the comment, we succesffuly figure out that the lower bits of c should be the control bit of vga display color.
+##### Answer
+
+According to the comment, we succesffuly figure out that the lower bits of c should be the control bit of vga display color.
 
 ​	Then I want to set a `%r`  parameter in `fmt` to set the color.
 
@@ -630,7 +766,9 @@ A: According to the comment, we succesffuly figure out that the lower bits of c 
 
 **Exercise 9.** *Determine where the kernel initializes its stack, and exactly where in memory its stack is located. How does the kernel reserve space for its stack? And at which "end" of this reserved area is the stack pointer initialized to point to?*
 
-A :	At line 77 in `entry.S`, stack pointer is set, which means the initialization of the stack.
+##### Answer
+
+At line 77 in `entry.S`, stack pointer is set, which means the initialization of the stack.
 
 ```assembly
 	# Set the stack pointer
@@ -666,7 +804,9 @@ The kernel resercves the memory space for the stack by defining `%esp` and `.spa
 
 *Note that, for this exercise to work properly, you should be using the patched version of QEMU available on the [tools](https://pdos.csail.mit.edu/6.828/2018/tools.html) page or on Athena. Otherwise, you'll have to manually translate all breakpoint and memory addresses to linear addresses.*
 
-A :  From reading `kernel.asm`, we find the following address. The function `test_backtrace`' s virtual address is `0xf100040`. 
+##### Answer
+
+From reading `kernel.asm`, we find the following address. The function `test_backtrace`' s virtual address is `0xf100040`. 
 
 ```assembly
 f0100040 <test_backtrace>:
@@ -722,17 +862,25 @@ And %ebx stores the parameter passed to the function.
 
 
 
-##### Question:
+#### Question:
 
-*1. The return instruction pointer typically points to the instruction after the `call` instruction (why?).*
+##### Question1
 
-A : After the execution of the called funcition, we can directly executes the next instruction based on the return instruction pointer.
+The return instruction pointer typically points to the instruction after the `call` instruction (why?).*
+
+##### Answer
+
+After the execution of the called funcition, we can directly executes the next instruction based on the return instruction pointer.
 
 
 
-2. *Why can't the backtrace code detect how many arguments there actually are? How could this limitation be fixed?*
+##### Question2
 
-A: There is no counter in the assembly code. To solve this limitaion, we can set up a register for counting the number of parameters.
+Why can't the backtrace code detect how many arguments there actually are? How could this limitation be fixed?
+
+##### Answer
+
+There is no counter in the assembly code. To solve this limitaion, we can set up a register for counting the number of parameters.
 
 
 
@@ -741,6 +889,24 @@ A: There is no counter in the assembly code. To solve this limitaion, we can set
 *If you use `read_ebp()`, note that GCC may generate "optimized" code that calls `read_ebp()` before `mon_backtrace()`'s function prologue, which results in an incomplete stack trace (the stack frame of the most recent function call is missing). While we have tried to disable optimizations that cause this reordering, you may want to examine the assembly of `mon_backtrace()` and make sure the call to `read_ebp()` is happening after the function prologue.*
 
 
+
+##### Answer
+
+It is about the gcc calling convention.
+
+![image-20191015205424383](ReadMe.assets/image-20191015205424383.png)
+
+When the caller wants to call another function, it first pushes the arguments and instruction pointer onto the stack. In the callee function, we saves the `%ebp` register value onto stack. The value of callee's 
+
+`%esp` stores the address of the caller's `%ebp`. 
+
+```assembly
+push %ebp
+mov %esp, %ebp
+push %ebx
+```
+
+After executing the following codese, the callee's `%ebp` register now stores the address of the caller's `%ebp`. The critical point of the exercise is to understand this point. What's more,  we can see from the illustration that the caller's `4(%%ebp)`  and the arguments can also be found with specfic offset plus `%ebp`.
 
 ```c
 
@@ -788,28 +954,6 @@ mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 
 
 
-Described in the picture above, I give my solution to the exercise.
-
-It is about the gcc calling convention.
-
-![image-20191015205424383](ReadMe.assets/image-20191015205424383.png)
-
-When the caller wants to call another function, it first pushes the arguments and instruction pointer onto the stack. In the callee function, we saves the `%ebp` register value onto stack. The value of callee's 
-
-`%esp` stores the address of the caller's `%ebp`. 
-
-```assembly
-push %ebp
-mov %esp, %ebp
-push %ebx
-```
-
-After executing the following codese, the callee's `%ebp` register now stores the address of the caller's `%ebp`. The critical point of the exercise is to understand this point. What's more,  we can see from the illustration that the caller's `4(%%ebp)`  and the arguments can also be found with specfic offset plus `%ebp`.
-
-
-
-
-
 **Exercise 12.** Modify your stack backtrace function to display, for each `eip`, the function name, source file name, and line number corresponding to that `eip`.
 
 In `debuginfo_eip`, where do `__STAB_*` come from? This question has a long answer; to help you to discover the answer, here are some things you might want to do:
@@ -845,6 +989,8 @@ Tip: printf format strings provide an easy, albeit obscure, way to print non-nul
 You may find that some functions are missing from the backtrace. For example, you will probably see a call to `monitor()` but not to `runcmd()`. This is because the compiler in-lines some function calls. Other optimizations may cause you to see unexpected line numbers. If you get rid of the `-O2` from `GNUMakefile`, the backtraces may make more sense (but your kernel will run more slowly).
 
 
+
+##### Answer
 
 1. look in the file `kern/kernel.ld` for `__STAB_*`
 
