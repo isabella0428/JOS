@@ -488,3 +488,181 @@ page_insert(pde_t *pgdir, struct PageInfo *pp, void *va, int perm)
 }
 ```
 
+
+
+
+
+#### Part3	Kernel Address Space
+
+##### Exercise 5
+
+Fill in the missing code in `mem_init()` after the call to `check_page()`.
+
+Your code should now pass the `check_kern_pgdir()` and `check_page_installed_pgdir()` checks.
+
+##### Answer:
+
+In this part, all we have to do is to map virtual addresses to physical addresses based on the instructions. Note that in the first `boot_map_region` function , we pass `PTSIZE` as the size to be mapped because beyond one PTSIZE stores page table mapped from kernel address space to user address space.
+
+```c
+void
+mem_init(void)
+{
+	.......................
+	//////////////////////////////////////////////////////////////////////
+	// Now we set up virtual memory
+
+	//////////////////////////////////////////////////////////////////////
+	// Map 'pages' read-only by the user at linear address UPAGES
+	// Permissions:
+	//    - the new image at UPAGES -- kernel R, user R
+	//      (ie. perm = PTE_U | PTE_P)
+	//    - pages itself -- kernel RW, user NONE
+	// Your code goes here:
+	boot_map_region(kern_pgdir, UPAGES, PTSIZE, PADDR((void *)pages), PTE_U | PTE_P);
+	
+	.......................
+	
+	//////////////////////////////////////////////////////////////////////
+	// Use the physical memory that 'bootstack' refers to as the kernel
+	// stack.  The kernel stack grows down from virtual address KSTACKTOP.
+	// We consider the entire range from [KSTACKTOP-PTSIZE, KSTACKTOP)
+	// to be the kernel stack, but break this into two pieces:
+	//     * [KSTACKTOP-KSTKSIZE, KSTACKTOP) -- backed by physical memory
+	//     * [KSTACKTOP-PTSIZE, KSTACKTOP-KSTKSIZE) -- not backed; so if
+	//       the kernel overflows its stack, it will fault rather than
+	//       overwrite memory.  Known as a "guard page".
+	//     Permissions: kernel RW, user NONE
+	// Your code goes here:
+	boot_map_region(kern_pgdir, KSTACKTOP - KSTKSIZE, KSTKSIZE, PADDR((void *)(bootstack)), PTE_P | PTE_W);
+	
+	//////////////////////////////////////////////////////////////////////
+	// Map 'pages' read-only by the user at linear address UPAGES
+	// Permissions:
+	//    - the new image at UPAGES -- kernel R, user R
+	//      (ie. perm = PTE_U | PTE_P)
+	//    - pages itself -- kernel RW, user NONE
+	// Your code goes here:
+	boot_map_region(kern_pgdir, UPAGES, PTSIZE, PADDR((void *)pages), PTE_U | PTE_P);
+	.............
+}
+	
+
+```
+
+
+
+##### Question
+
+##### Q2 What entries (rows) in the page directory have been filled in at this point? What addresses do they map and where do they point? In other words, fill out this table as much as possible:
+
+| Entry | Base Virtual Address | Points to (logically)                            |
+| ----- | -------------------- | ------------------------------------------------ |
+| 1023  | 0xffc00000           | Page table for top 4MB of phys memory            |
+| 1022  | 0xff800000           | Page table for second top 4MB of physical memory |
+|       |                      |                                                  |
+|       |                      |                                                  |
+|       |                      |                                                  |
+| 2     | 0x00800000           | Page table for third lowest 4MB of phys memory   |
+| 1     | 0x00400000           | Page table for second lowest 4MB of phys memory  |
+| 0     | 0x00000000           | Page table for lowest 4MB of phys memory         |
+
+
+
+##### Q3: We have placed the kernel and user environment in the same address space. Why will user programs not be able to read or write the kernel's memory? What specific mechanisms protect the kernel memory?
+
+In kernel's memory, we don't set user permission to the page directory entry and page table entry. So user cannot read or write kernel memory.
+
+
+
+##### Q4: What is the maximum amount of physical memory that this operating system can support? Why?
+
+Since we store all `PageInfo` from `[UTOP, UTOP + PTSIZE)`, it limits the number of physical pages we can have. `PTSIZE` is `4096*1024=4MB`. `PageInfo` consists of two parts, first `PageInfo *pp_link`, which is a pointer and should be 4 Bytes, then `uint16_t pp_ref` , which should be 2 bytes. But we know that in 32 bit aligned system, address should be multiples of 4 Bytes. So `PageInfo` occupies 8 Bytes.
+
+So we can have `4M / 8 = 512K pages`. Since each page is `4KB`, total physical memory should not exceed `2GB`.
+
+
+
+##### Q5: How much space overhead is there for managing memory, if we actually had the maximum amount of physical memory? How is this overhead broken down?
+
+First we use `4M` space to store all the PageInfos. Since we use 10 bits to find page directory entry, we will have at most `1K` page table directory. Since each page directory entry is 4 Bytes, the page directory table will take `4K` in total. We need one page table entry for each pages and each entry takes up 4 Bytes. In total we use `4 * 512K = 2M`. 
+
+In total,  we need `4M + 4K + 2M = 6M + 2K`
+
+
+
+##### Q6: Revisit the page table setup in `kern/entry.S` and `kern/entrypgdir.c`. Immediately after we turn on paging, EIP is still a low number (a little over 1MB). At what point do we transition to running at an EIP above KERNBASE? What makes it possible for us to continue executing at a low EIP between when we enable paging and when we begin running at an EIP above KERNBASE? Why is this transition necessary?
+
+First we set a breakpoint right after we set cr3.
+
+```
+(gdb) b *0x100020
+Breakpoint 1 at 0x100020
+(gdb) c
+Continuing.
+The target architecture is assumed to be i386
+=> 0x100020:    or     $0x80010001,%eax
+
+Breakpoint 1, 0x00100020 in ?? ()
+eax            0x11                17
+ecx            0x0                 0
+edx            0xffffff40          -192
+ebx            0x10074             65652
+esp            0x7bec              0x7bec
+ebp            0x7bf8              0x7bf8
+esi            0x10074             65652
+edi            0x0                 0
+eip            0x100020            0x100020
+eflags         0x46                [ PF ZF ]
+cs             0x8                 8
+ss             0x10                16
+ds             0x10                16
+es             0x10                16
+fs             0x10                16
+gs             0x10                16
+```
+
+We can see that eip is still at low address.
+
+It is after we jump to a new address will we reset `%eip` again.
+
+```assembly
+	mov	$relocated, %eax
+f0100028:	b8 2f 00 10 f0       	mov    $0xf010002f,%eax
+	jmp	*%eax
+f010002d:	ff e0                	jmp    *%eax
+```
+
+```
+(gdb) b *0xf0100034
+Breakpoint 1 at 0xf0100034: file kern/entry.S, line 77.
+(gdb) c
+Continuing.
+The target architecture is assumed to be i386
+=> 0xf0100034 <relocated+5>:    mov    $0xf0116000,%esp
+
+Breakpoint 1, relocated () at kern/entry.S:77
+77              movl    $(bootstacktop),%esp
+(gdb) info register
+eax            0xf010002f          -267386833
+ecx            0x0                 0
+edx            0xffffff40          -192
+ebx            0x10074             65652
+esp            0x7bec              0x7bec
+ebp            0x0                 0x0
+esi            0x10074             65652
+edi            0x0                 0
+eip            0xf0100034          0xf0100034 <relocated+5>
+eflags         0x86                [ PF SF ]
+cs             0x8                 8
+ss             0x10                16
+ds             0x10                16
+es             0x10                16
+```
+
+With this transaction, we can use virtual address for page translation so that we can solve the memory waste issue and keep the user and kernel space from eacb other.
+
+
+
+
+
