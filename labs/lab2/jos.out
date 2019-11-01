@@ -1,0 +1,44 @@
+***
+*** Now run 'make gdb'.
+***
+
+(process:52166): GLib-WARNING **: 16:04:25.342: ../glib/gmem.c:490: custom memory allocation vtable not supported
+x 1, y 3, z 4
+6828 decimal is 15254 octal!
+He110 World
+x=3 y=-267321364
+red
+yellow
+blue
+entering test_backtrace 5
+entering test_backtrace 4
+entering test_backtrace 3
+entering test_backtrace 2
+entering test_backtrace 1
+entering test_backtrace 0
+Stack backtrace:
+ ebp f010ff08 eip f010008f args 00000000 00000000 00000000 00000000 f01009ba 
+  kern/init.c:18: test_backtrace+79
+ ebp f010ff28 eip f0100068 args 00000000 00000001 f010ff68 00000000 f01009ba 
+  kern/init.c:16: test_backtrace+40
+ ebp f010ff48 eip f0100068 args 00000001 00000002 f010ff88 00000000 f01009ba 
+  kern/init.c:16: test_backtrace+40
+ ebp f010ff68 eip f0100068 args 00000002 00000003 f010ffa8 00000000 f01009ba 
+  kern/init.c:16: test_backtrace+40
+ ebp f010ff88 eip f0100068 args 00000003 00000004 f010ffb8 00000000 f0101977 
+  kern/init.c:16: test_backtrace+40
+ ebp f010ffa8 eip f0100068 args 00000004 00000005 f010fff8 f01000c6 f0101977 
+  kern/init.c:16: test_backtrace+40
+ ebp f010ffc8 eip f0100155 args 00000005 00000100 f01019ca 00000000 00000000 
+  kern/init.c:54: i386_init+193
+ ebp f010fff8 eip f010003e args 00111021 00000000 00000000 00000000 00000000 
+  kern/entry.S:83: <unknown>+0
+leaving test_backtrace 0
+leaving test_backtrace 1
+leaving test_backtrace 2
+leaving test_backtrace 3
+leaving test_backtrace 4
+leaving test_backtrace 5
+Welcome to the JOS kernel monitor!
+Type 'help' for a list of commands.
+qemu: terminating on signal 15 from pid 52138
