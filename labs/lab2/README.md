@@ -346,13 +346,13 @@ According to the  supplyment materials provided on the website, we know that pag
 
 Recall that we set the virtual address equal to the linear address before by setting the base address to zero.
 
-![image-20191101104124171](/Users/isabella/Desktop/JOS/labs/lab2/README.assets/image-20191101104124171.png)
+![image-20191101104124171](README.assets/image-20191101104124171.png)
 
 Using different parts of linear address, we can get the offset in these two level page tables and find the corresponding physical address. 
 
 For example, by adding the offset DIR to pgdir, we get the address of corresponding page directory entry. Using the page directory entry, we can get the adress of page table we want. Then by adding offset PAGE to page table address, we get the address of page table entry.  With page table entry, we can remove the permission bit of it and finally get the physical address of the page we want.
 
-![image-20191101104649285](/Users/isabella/Desktop/JOS/labs/lab2/README.assets/image-20191101104649285.png)
+![image-20191101104649285](README.assets/image-20191101104649285.png)
 
 
 
