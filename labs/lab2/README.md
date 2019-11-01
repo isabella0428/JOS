@@ -560,9 +560,9 @@ mem_init(void)
 | ----- | -------------------- | ------------------------------------------------ |
 | 1023  | 0xffc00000           | Page table for top 4MB of phys memory            |
 | 1022  | 0xff800000           | Page table for second top 4MB of physical memory |
-|       |                      |                                                  |
-|       |                      |                                                  |
-|       |                      |                                                  |
+| 。    | ？                   | ？                                               |
+| 。    | ？                   | ？                                               |
+| 。    | ？                   | ？                                               |
 | 2     | 0x00800000           | Page table for third lowest 4MB of phys memory   |
 | 1     | 0x00400000           | Page table for second lowest 4MB of phys memory  |
 | 0     | 0x00000000           | Page table for lowest 4MB of phys memory         |
