@@ -127,6 +127,7 @@ def test_buggyhello2():
 @test(5)
 def test_evilhello():
     r.user_test("evilhello")
+    print(r)
     r.match('.00001000. user_mem_check assertion failure for va f0100...',
             '.00001000. free env 00001000')
 

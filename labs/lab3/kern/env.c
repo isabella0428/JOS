@@ -210,7 +210,7 @@ env_setup_vm(struct Env *e)
 //	-E_NO_MEM on memory exhaustion
 //
 int
-env_alloc(struct Env * *newenv_store, envid_t parent_id)
+env_alloc(struct Env **newenv_store, envid_t parent_id)
 {
 	int32_t generation;
 	int r;
@@ -372,7 +372,7 @@ load_icode(struct Env *e, uint8_t *binary)
 		memcpy((void *)ph->p_va, binary + ph->p_offset, ph->p_filesz);
 	}
 
-	// Make sure that the environment starts executing there
+	// Make sure that the environment sta·rts executing there
 	e->env_tf.tf_eip = ELFHDR->e_entry;
 
 	// Now map one page for the program's initial stack
@@ -405,11 +405,11 @@ env_create(uint8_t *binary, enum EnvType type)
 	if (result == -E_NO_MEM)
 		panic("env_alloc: %e", result);
 
+	env->env_parent_id = 0;
+	env->env_type = type;
+
 	//Loads the named elf binary into it with load_icode
 	load_icode(env, binary);
-
-	//Set the newly allocated env's type
-	env->env_type = type;
 }
 
 //
@@ -530,6 +530,8 @@ void
 
 	// LAB 3: Your code here.
 	// Set the current environment(if any) back to ENV_RUNNABLE if it is ENV_RUNNING
+
+	
 	if (curenv != NULL && curenv->env_status == ENV_RUNNING)
 		curenv->env_type = ENV_RUNNABLE;
 
@@ -550,5 +552,5 @@ void
 	//	   environment.
 	env_pop_tf(&e->env_tf);
 
-	panic("env_run not yet implemented");
+	// panic("env_run not yet implemented");
 }
