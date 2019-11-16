@@ -1,668 +1,580 @@
+## Lab3 User Environments
 
-
-## Lab2 Booting a PC
-
-In this lab, we are going to write memory management code for our JOS!!
-
-It is divided into three parts, physical page management, virtual memory and kernel address space.
+This lab is divided into two parts, user environments and exception handling and Page Faults, Breakpoints Exceptions, and System Calls.
 
 
 
-#### Part1	Physical Page Management
+#### Part A: User Environments and Exception Handling
 
-##### Exercise 1	
+**Exercise 1.** Modify `mem_init()` in `kern/pmap.c` to allocate and map the `envs` array. This array consists of exactly `NENV` instances of the `Env` structure allocated much like how you allocated the `pages` array. Also like the `pages` array, the memory backing `envs` should also be mapped user read-only at `UENVS` (defined in `inc/memlayout.h`) so user processes can read from this array.
 
-In the file `kern/pmap.c`, you must implement code for the following functions (probably in the order given).
-
-```
-`boot_alloc()`
-`mem_init()` (only up to the call to `check_page_free_list(1)`)
-`page_init()`
-`page_alloc()`
-`page_free()
-```
-
-`check_page_free_list()` and `check_page_alloc()` test your physical page allocator. You should boot JOS and see whether `check_page_alloc()`reports success. Fix your code so that it passes. You may find it helpful to add your own `assert()`s to verify that your assumptions are correct.
-
-
+You should run your code and make sure `check_kern_pgdir()` succeeds.
 
 ##### Answer
 
-1. boot_alloc
+This exercise is much like exercise 1 in lab2.
 
-In this function, we allocate a contiguous chunk of memory for kernel page table directory.
-
-When the end of the contiguous chunk does not exceed the maximum physical memory capacity, we return the start of the memory chunk, or we should send the panic message to tell the user that we are running out of memory.
-
-If we try to print out the result value, we can get `f0115000`. Recall that in lab1 kern/entry.S, we know that the c code is linked to run from `[KERNBASE, KERNBASE + 1M]` and the physical memory is from [0, 1M]. So boot_alloc actually return virtual address which is linear of physical address.
-
-```c
-static void *
-boot_alloc(uint32_t n)
-{
-  ...........
-    
-  // Allocate a chunk large enough to hold 'n' bytes, then update
-  // nextfree.  Make sure nextfree is kept aligned
-  // to a multiple of PGSIZE.
-  //
-	result = nextfree;			// Start address of the allocated contiguous memory block
-	nextfree = ROUNDUP(nextfree + n, PGSIZE);
-	if ((uint32_t)nextfree - KERNBASE > (npages * PGSIZE))	// The allocated space exceeds total physical memory
-		panic("Out of memory!");
-
-  return result;
-}
-```
-
-
-
-2. mem_init
-
-We allocate an array of PageInfos. To reuse the code, we use the function `boot_alloc` to allocate the contiguous chunk of memory and initialize them with 0.
+Similarily, we just allocate an array `envs` to hold the pointers to each `Env` structure and map the `envs` to user address space.
 
 ```c
 void
 mem_init(void)
 {
-  ..........
-    
-  //////////////////////////////////////////////////////////////////////
-	// Allocate an array of npages 'struct PageInfo's and store it in 'pages'.
-	// The kernel uses this array to keep track of physical pages: for
-	// each physical page, there is a corresponding struct PageInfo in this
-	// array.  'npages' is the number of physical pages in memory.  Use memset
-	// to initialize all fields of each struct PageInfo to 0.
-	// Your code goes here:
-	pages = boot_alloc(npages * sizeof(struct PageInfo *));
-	memset(pages, 0, npages * sizeof(struct PageInfo *));
-  
-  ............
+	........
+	//////////////////////////////////////////////////////////////////////
+	// Make 'envs' point to an array of size 'NENV' of 'struct Env'.
+	// LAB 3: Your code here.
+	envs = boot_alloc(NENV * sizeof(struct ENV*));
+	.......
+	//////////////////////////////////////////////////////////////////////
+	// Map the 'envs' array read-only by the user at linear address UENVS
+	// (ie. perm = PTE_U | PTE_P).
+	// Permissions:
+	//    - the new image at UENVS  -- kernel R, user R
+	//    - envs itself -- kernel RW, user NONE
+	// LAB 3: Your code here.
+	boot_map_region(kern_pgdir, UENVS, PTSIZE, PADDR((void *)envs), PTE_U | PTE_P);
+  .....
 }
 ```
 
 
 
-3. page_init
+**Exercise 2.** In the file `env.c`, finish coding the following functions:
 
-According to the description above, now we need to initialize PageInfo for each physical pages.
+- `env_init()`
 
-a. First Page is occupied (for important things like BIOS, real-mode interrupt descriptor table)
+  Initialize all of the `Env` structures in the `envs` array and add them to the `env_free_list`. Also calls `env_init_percpu`, which configures the segmentation hardware with separate segments for privilege level 0 (kernel) and privilege level 3 (user).
 
-b. Rest of base memory, [PGSIZE, npages_basemem * PGSIZE] is free.
+- `env_setup_vm()`
 
-c. IO mapped region is allocated
+  Allocate a page directory for a new environment and initialize the kernel portion of the new environment's address space.
 
-d. First part of extended memory is allocated — For kernel page table
+- `region_alloc()`
 
-e. rest of extended memory is free
+  Allocates and maps physical memory for an environment
+
+- `load_icode()`
+
+  You will need to parse an ELF binary image, much like the boot loader already does, and load its contents into the user address space of a new environment.
+
+- `env_create()`
+
+  Allocate an environment with `env_alloc` and call `load_icode` to load an ELF binary into it.
+
+- `env_run()`
+
+  Start a given environment running in user mode.
+
+As you write these functions, you might find the new cprintf verb `%e` useful -- it prints a description corresponding to an error code. For example,
+
+```
+	r = -E_NO_MEM;
+	panic("env_alloc: %e", r);
+```
+
+will panic with the message "env_alloc: out of memory".
+
+
+
+##### Answer:
+
+Here we should inplement the critical functions of environment creations.
+
+1. env_init
+
+Initialization environments is similar to initialization of pages. 
+
+Just link the environments tail by tail. Make sure that env[0] is at the head of the list.
+
+Then we call `env_init_percpu` to load GDT and intializes the segment registers.
 
 ```c
 void
-page_init(void)
+env_init(void)
 {
-	// The example code here marks all physical pages as free.
-	// However this is not truly the case.  What memory is free?
-	//  1) Mark physical page 0 as in use. (in use:	1)
-	//     This way we preserve the real-mode IDT and BIOS structures
-	//     in case we ever need them.  (Currently we don't, but...)
-	//  2) The rest of base memory, [PGSIZE, npages_basemem * PGSIZE)
-	//     is free.
-	//  3) Then comes the IO hole [IOPHYSMEM, EXTPHYSMEM), which must
-	//     never be allocated.(So IO hole are occupied)
-	//  4) Then extended memory [EXTPHYSMEM, ...).
-	//     Some of it is in use, some is free. Where is the kernel
-	//     in physical memory?  Which pages are already in use for
-	//     page tables and other data structures?
-	//
-	// Change the code to reflect this.
-	// NB: DO NOT actually touch the physical memory corresponding to
-	// free pages!
-	size_t i;
-		for (i = 0; i < npages; i++)
-	{
-		// number of pages in IO-mapped address range
-		int npages_IO = (EXTPHYSMEM - IOPHYSMEM + PGSIZE - 1) / PGSIZE;
-		// number of pages of kern_pgdir
-		int npages_kern = ((uint32_t)boot_alloc(0) - KERNBASE + PGSIZE - 1) / PGSIZE;
+	// Set up envs array
+	// LAB 3: Your code here.
+	// Be sure to let envs[0] at the head of `env_free_list`
+	env_free_list = NULL;
 
-		// if it is in IO hole
-		int is_IO_hole = i >= npages_basemem && i <= npages_basemem + npages_IO ;
-		// if it is occupied by kernel
-		int is_kernel_pgdir = (i >= npages_basemem + npages_IO && i <= npages_basemem + npages_IO + npages_kern);
-		
-		if (i == 0 || is_IO_hole || is_kernel_pgdir) {
-			pages[i].pp_ref = 1;
-		}
-		else 
-		{
-			// The rest of base memory, [PGSIZE, npages_basemem * PGSIZE) is free
-			// The rest of extended memory is free
-			pages[i].pp_ref = 0;
-			pages[i].pp_link = page_free_list;
-			page_free_list = &pages[i];
-		}
-	}
-}
-```
-
-
-
-4. page_alloc
-
-Here we allocate a new page.
-
-First we get the first page from the `page_free_list`. Then we remove the newly allocated page from `page_free_list`.If the allocated flag is set, we `memset` the newly allocated address with `'0'`.Finally, we return the newly allocated page's kernel virtual address.
-
-Notice here that we should `memset`  the virtual address of the page, so we use `page2kva` to convert it.
-
-
-
-Let's see how `page2kva` works.
-
-```c
-static inline void*
-page2kva(struct PageInfo *pp)
-{
-	return KADDR(page2pa(pp));
-}
-```
-
-First, it use `page2pa` to get the offset address from pages to pp , which is equal to pages's physical address.  Then it convert pages to its kernel virtual address.
-
-
-
-Now see the complete codes  :D
-
-```c
-struct PageInfo *
-page_alloc(int alloc_flags)
-{
-	// Fill this function in
-	struct PageInfo *new_page;
-
-	new_page = page_free_list;
-
-	// Panic if out of free memory
-	if (new_page == NULL) {
-		return NULL;
+	for(int i = NENV - 1; i >= 0; --i) {
+		envs[i].env_id = 0;
+		envs[i].env_link = env_free_list;
+		env_free_list = &envs[i];
 	}
 
-	page_free_list = new_page->pp_link;
-	new_page->pp_link = NULL;
-
-
-	// If (alloc_flags & ALLOC_ZERO), fills the entire
-	// returned physical page with '\0' bytes.
-	if(alloc_flags && ALLOC_ZERO)
-	{
-		memset(page2kva(new_page), '\0', PGSIZE);
-	}
-
-	return new_page;
+	// Per-CPU part of the initialization
+	env_init_percpu();
 }
 ```
 
 
 
-5. page_free
+2. env_setup_vm
 
-This one is not so hard. All we have to do is to add pp to `page_free_list` .
+In this function, we copy the kernel memory into our environment address space.
 
-```c
-void
-page_free(struct PageInfo *pp)
-{
-	// Fill this function in
-	// Hint: You may want to panic if pp->pp_ref is nonzero or
-	// pp->pp_link is not NULL.
-	if (pp->pp_ref != 0 || pp->pp_link != NULL) {
-		panic("Cannot free this page!");
-	}
+We can accoplish this by simply allocating a continuous space of size PGSIZE and copying the kernel page table to the environment page table.
 
-	pp->pp_link = page_free_list;
-	page_free_list = pp;
-}
-```
-
-
-
-##### Exercise 2
-
-Look at chapters 5 and 6 of the [Intel 80386 Reference Manual](https://pdos.csail.mit.edu/6.828/2018/readings/i386/toc.htm), if you haven't done so already. Read the sections about page translation and page-based protection closely (5.2 and 6.4). We recommend that you also skim the sections about segmentation; while JOS uses the paging hardware for virtual memory and protection, segment translation and segment-based protection cannot be disabled on the x86, so you will need a basic understanding of it.
-
-##### Answer:
-
-In this part, I read Chapter 5, 6 in book [i386.pdf](https://www.cs.hmc.edu/~rhodes/courses/cs134/sp19/readings/i386.pdf). It introduces segment translation and page translations i. I386， which is useful for following exercises.
-
-
-
-##### Exercise 3
-
-While GDB can only access QEMU's memory by virtual address, it's often useful to be able to inspect physical memory while setting up virtual memory. Review the QEMU [monitor commands](https://pdos.csail.mit.edu/6.828/2018/labguide.html#qemu) from the lab tools guide, especially the `xp`command, which lets you inspect physical memory. To access the QEMU monitor, press Ctrl-a c in the terminal (the same binding returns to the serial console).
-
-Use the` xp` command in the QEMU monitor and the `x` command in GDB to inspect memory at corresponding physical and virtual addresses and make sure you see the same data.
-
-Our patched version of QEMU provides an `info pg` command that may also prove useful: it shows a compact but detailed representation of the current page tables, including all mapped memory ranges, permissions, and flags. Stock QEMU also provides an` info` mem command that shows an overview of which ranges of virtual addresses are mapped and with what permissions.
-
-##### Answer:
-
-In order to get familiar with xp command, I set the breakpoint in gdb.
-
-Make sure u set the breakpoint after we set cr3 register.
-
-Then we print out 8 words in these two address. We can now see that the virtual address is now mapped to physical address.
-
-```
-(gdb) x/8x  0x00100000
-0x100000:       0x1badb002      0x00000000      0xe4524ffe     0x7205c766
-0x100010:       0x34000004      0x3000b812      0x220f0011     0xc0200fd8
-(gdb) x/8x  0xf0100000
-0xf0100000 			0x1badb002      0x00000000    	0xe4524ffe     0x7205c766
-0xf0100010   		0x34000004      0x3000b812      0x220f0011     0xc0200fd8
-```
-
-Then we try `info pg` command in qemu monitor console.(That means u should press 'Ctrl + a c' to switch from normal qemu mode to monitor mode).
-
-```
-(qemu) info pg
-VPN range     Entry         Flags        Physical page
-[00000-003ff]  PDE[000]     ----A----P
-  [00000-00000]  PTE[000]     --------WP 00000
-  [00001-0009f]  PTE[001-09f] ---DA---WP 00001-0009f
-  [000a0-000b7]  PTE[0a0-0b7] --------WP 000a0-000b7
-  [000b8-000b8]  PTE[0b8]     ---DA---WP 000b8
-  [000b9-000ff]  PTE[0b9-0ff] --------WP 000b9-000ff
-  [00100-00102]  PTE[100-102] ----A---WP 00100-00102
-  [00103-00111]  PTE[103-111] --------WP 00103-00111
-  [00112-00112]  PTE[112]     ---DA---WP 00112
-  [00113-00114]  PTE[113-114] --------WP 00113-00114
-  [00115-00156]  PTE[115-156] ---DA---WP 00115-00156
-  [00157-00237]  PTE[157-237] --------WP 00157-00237
-  [00238-003ff]  PTE[238-3ff] ---DA---WP 00238-003ff
-[f0000-f03ff]  PDE[3c0]     ----A---WP
-  [f0000-f0000]  PTE[000]     --------WP 00000
-  [f0001-f009f]  PTE[001-09f] ---DA---WP 00001-0009f
-  [f00a0-f00b7]  PTE[0a0-0b7] --------WP 000a0-000b7
-  [f00b8-f00b8]  PTE[0b8]     ---DA---WP 000b8
-  [f00b9-f00ff]  PTE[0b9-0ff] --
-```
-
-As describes in tool guide provided by the lab website, we can know that we have two page directories up till now, [00000-003ff] and [f0000-f03ff]. And the rest are page table entries.
-
-Finally, let's try out command `info mem`
-
-```
-(qemu) info mem
-0000000000000000-0000000000400000 0000000000400000 -r-
-00000000f0000000-00000000f0400000 0000000000400000 -rw
-```
-
-The first memory chunk is mapped read permission, only kernel-visible.
-
-The second memory chunk is mapped read write permission, but also only kernel-visible.
-
-
-
-##### Question
-
-1. Assuming that the following JOS kernel code is correct, what type should variable `x` have, `uintptr_t` or `physaddr_t`?
-
-   ```c
-   mystery_t x;
-   	char* value = return_a_pointer();
-   	*value = 10;
-   	x = (mystery_t) value;
-   ```
-
-##### Answer:
-
-It should be `uintptr_t`. Since the code is correct and we do dereference value above, value should be virtual address. So `mystery_t` is  `uintptr_t`.
-
-
-
-##### Exercise 4
-
-In the file `kern/pmap.c`, you must implement code for the following functions.
-
-```
-        pgdir_walk()
-        boot_map_region()
-        page_lookup()
-        page_remove()
-        page_insert()
-	
-```
-
-`check_page()`, called from `mem_init()`, tests your page table management routines. You should make sure it reports success before proceeding.
-
-##### Answer:
-
-1. pgdir_walk()
-
-Let's start with pgdir_walk, which is also the core function in this part. Given `pgdir`, a pointer to a page directory table, we are going to find the corresponding page table entry pointer.
-
-According to the  supplyment materials provided on the website, we know that page translation is divided into two different parts, page directory and page table. You can also regard it as two different level page tables.
-
-Recall that we set the virtual address equal to the linear address before by setting the base address to zero.
-
-![image-20191101104124171](README.assets/image-20191101104124171.png)
-
-Using different parts of linear address, we can get the offset in these two level page tables and find the corresponding physical address. 
-
-For example, by adding the offset DIR to pgdir, we get the address of corresponding page directory entry. Using the page directory entry, we can get the adress of page table we want. Then by adding offset PAGE to page table address, we get the address of page table entry.  With page table entry, we can remove the permission bit of it and finally get the physical address of the page we want.
-
-![image-20191101104649285](README.assets/image-20191101104649285.png)
-
-
-
-Then comes the code.
+In JOS, there is no separate kernel memory. We copy kernel memory each time when we create a new process.
 
 ```c
-pte_t *
-pgdir_walk(pde_t *pgdir, const void *va, int create)
+static int
+env_setup_vm(struct Env *e)
 {
-	pde_t *pg_dir_entry = (pde_t *)(pgdir + (unsigned int)PDX(va));
-	struct PageInfo *new_page;
-	uintptr_t offset;
-	pte_t* page_base;
+	int i;
+	struct PageInfo *p = NULL;
 
-	if(!(*pg_dir_entry) & PTE_P) {
-		// If page table doesn't exist and it is not allowed 
-		// to create a new one, return NULL
-		if (create == false)
-			return NULL;
-
-		// Allocate a new page and if succeeds, add the new page's reference by one
-		new_page = page_alloc(1);
-		if(new_page == NULL)
-			return NULL;
-		new_page->pp_ref ++;
-		*pg_dir_entry = ((page2pa(new_page)) | PTE_P | PTE_W | PTE_U);
-	}
-
-	offset = PTX(va);
-	page_base = KADDR(PTE_ADDR(*pg_dir_entry));
-	return &page_base[offset];
-}
-```
-
-
-
-2. boot_map_region()
-
-After finishing pgdir_walk, this part is much easier. We just need to iterate over the whole chunk of address space and do the mapping.
-
-```c
-static void
-boot_map_region(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa, int perm)
-{
-	// Fill this function in
-	int num_pages = size / PGSIZE;
-	pte_t  * pt_entry;
-	for(int i = 0; i < num_pages; ++i) {
-		pt_entry = pgdir_walk(pgdir, (void *)(va + i * PGSIZE), 1);
-		*pt_entry = (pa + i * PGSIZE) | PTE_P | perm;
-	}
-}
-```
-
-
-
-3. page_lookup()
-
-There we just have to use page table entry with `pgdir_walk` and return the pageInfo of the address.
-
-To find the Page Info, we first get the physical address of the page and calculate the offset of the page in `page` array.
-
-```c
-struct PageInfo *
-page_lookup(pde_t *pgdir, void *va, pte_t **pte_store)
-{
-	// Fill this function in
-	pte_t *pt_entry = pgdir_walk(pgdir, va, false);
-	struct PageInfo *ret;
-
-	if(pt_entry == NULL)
-		return NULL;
-	
-	if(!(*pt_entry & PTE_P))
-		return NULL;
-
-	if(pte_store != NULL)
-		*pte_store = pt_entry;
-
-	ret =  pa2page(PTE_ADDR(*pt_entry));
-	return ret;
-}
-```
-
-
-
-4. page_remove
-
-Here we first check if the page exists. If not, do nothing. If exists, we decrease PageInfo 's reference by one and invalidate tlb. 
-
-```c
-void
-page_remove(pde_t *pgdir, void *va)
-{
-	// Fill this function in
-	pte_t * pte_store;
-	struct PageInfo *page = page_lookup(pgdir, va, &pte_store);
-	if(page == NULL)
-		return;
-	page_decref(page);
-	tlb_invalidate(pgdir,  va);
-	*pte_store = 0;
-}
-```
-
-
-
-5. page_insert()
-
-Here we  need to insert page `pp` to address `va`.  First, we get the page table entry with `pgdir_walk` we have implemented already.  Note that if there is a page exist in the address we want, invalidte tlb and remove it. Finally add the address to the entry and remember to enable the page directory entry!
-
-```c
-int
-page_insert(pde_t *pgdir, struct PageInfo *pp, void *va, int perm)
-{
-	// Fill this function in
-	pte_t *pt_entry = pgdir_walk(pgdir, (void *)va, 1);
-	if (pt_entry == NULL) {
+	// Allocate a page for the page directory
+	if (!(p = page_alloc(ALLOC_ZERO)))
 		return -E_NO_MEM;
-	}
+		
+  	p->pp_ref++;
+	// Allocate a page for this environment's page directory
+	e->env_pgdir = (pde_t *)page2kva(p);
+	// Map kernel memory into environment's page directory
+	memcpy(e->env_pgdir, kern_pgdir, PGSIZE);
 
-	pp->pp_ref++;
-	if (*pt_entry & PTE_P)
-	{
-		tlb_invalidate(pgdir, va);
-		page_remove(pgdir, va);
-	}
+	// UVPT maps the env's own page table read-only.
+	// Permissions: kernel R, user R
+	e->env_pgdir[PDX(UVPT)] = PADDR(e->env_pgdir) | PTE_P | PTE_U;
 
-	*pt_entry = page2pa(pp) | perm | PTE_P;
-	// Also enable pagetable directory entry
-	pgdir[PDX(va)] |= perm | PTE_P;
 	return 0;
 }
 ```
 
 
 
+4. region_alloc
+
+Allocate len bytes of memory to our environment.
+
+We accomplish this by allocating pages and inserting them to the virtual address starting from va.
+
+```c
+static void
+region_alloc(struct Env * e, void *va, size_t len)
+{
+	char *start_address = ROUNDDOWN(va, PGSIZE);
+	char *end_address = ROUNDUP(len, PGSIZE) + start_address;
+	char *current_address = start_address;
+	struct PageInfo *p;
+
+	while (current_address < end_address)
+	{
+		if (!(p = page_alloc(0)))
+			panic("Region Allocation for env %d failed", e->env_id);
+		page_insert(e->env_pgdir, p, current_address, PTE_U | PTE_W);
+		current_address += PGSIZE;
+	}
+}
+```
 
 
-#### Part3	Kernel Address Space
 
-##### Exercise 5
+5. load_icode
 
-Fill in the missing code in `mem_init()` after the call to `check_page()`.
+Since we haven't set up a file system yet, here we load the elf binary into our system instead. Like bootloader in `main.c`, we load each program segment into our environment.
 
-Your code should now pass the `check_kern_pgdir()` and `check_page_installed_pgdir()` checks.
+Remember to change `cr3` when reading segments.
 
-##### Answer:
+```c
+static void
+load_icode(struct Env *e, uint8_t *binary)
+{
+	struct Proghdr *ph, *eph;
+	struct PageInfo *stack;
+	struct Elf *ELFHDR = (struct Elf *)binary;
+	if (ELFHDR->e_magic != ELF_MAGIC)
+		panic("It is not a ELF format file!");
 
-In this part, all we have to do is to map virtual addresses to physical addresses based on the instructions. Note that in the first `boot_map_region` function , we pass `PTSIZE` as the size to be mapped because beyond one PTSIZE stores page table mapped from kernel address space to user address space.
+	ph = (struct Proghdr *)((uint8_t *)ELFHDR + ELFHDR->e_phoff);
+
+	eph = ph + ELFHDR->e_phnum;
+
+	// Load CR3 to this environment's page directory
+	lcr3(PADDR(e->env_pgdir));
+
+	for (; ph < eph; ph++)
+	{
+		if (ph->p_type != ELF_PROG_LOAD)
+			continue;
+		region_alloc(e, (void *)ph->p_va, ph->p_memsz);
+		memset((void *)ph->p_va, 0, ph->p_memsz);
+		memcpy((void *)ph->p_va, binary + ph->p_offset, ph->p_filesz);
+	}
+
+	// Make sure that the environment sta·rts executing there
+	e->env_tf.tf_eip = ELFHDR->e_entry;
+
+	// Now map one page for the program's initial stack
+	// at virtual address USTACKTOP - PGSIZE.
+
+	// LAB 3: Your code here.
+	lcr3(PADDR(kern_pgdir));
+	region_alloc(e, (void *)USTACKTOP - PGSIZE, PGSIZE);
+}
+```
+
+
+
+4. env_create
+
+In this function, we just combine the `env_alloc` and `load_icode` functions. Allocate a new environment and read program segments into it.
 
 ```c
 void
-mem_init(void)
+env_create(uint8_t *binary, enum EnvType type)
 {
-	.......................
-	//////////////////////////////////////////////////////////////////////
-	// Now we set up virtual memory
+	// LAB 3: Your code here.
+	struct Env *env;
+	int result;
 
-	//////////////////////////////////////////////////////////////////////
-	// Map 'pages' read-only by the user at linear address UPAGES
-	// Permissions:
-	//    - the new image at UPAGES -- kernel R, user R
-	//      (ie. perm = PTE_U | PTE_P)
-	//    - pages itself -- kernel RW, user NONE
-	// Your code goes here:
-	boot_map_region(kern_pgdir, UPAGES, PTSIZE, PADDR((void *)pages), PTE_U | PTE_P);
-	
-	.......................
-	
-	//////////////////////////////////////////////////////////////////////
-	// Use the physical memory that 'bootstack' refers to as the kernel
-	// stack.  The kernel stack grows down from virtual address KSTACKTOP.
-	// We consider the entire range from [KSTACKTOP-PTSIZE, KSTACKTOP)
-	// to be the kernel stack, but break this into two pieces:
-	//     * [KSTACKTOP-KSTKSIZE, KSTACKTOP) -- backed by physical memory
-	//     * [KSTACKTOP-PTSIZE, KSTACKTOP-KSTKSIZE) -- not backed; so if
-	//       the kernel overflows its stack, it will fault rather than
-	//       overwrite memory.  Known as a "guard page".
-	//     Permissions: kernel RW, user NONE
-	// Your code goes here:
-	boot_map_region(kern_pgdir, KSTACKTOP - KSTKSIZE, KSTKSIZE, PADDR((void *)(bootstack)), PTE_P | PTE_W);
-	
-	//////////////////////////////////////////////////////////////////////
-	// Map 'pages' read-only by the user at linear address UPAGES
-	// Permissions:
-	//    - the new image at UPAGES -- kernel R, user R
-	//      (ie. perm = PTE_U | PTE_P)
-	//    - pages itself -- kernel RW, user NONE
-	// Your code goes here:
-	boot_map_region(kern_pgdir, UPAGES, PTSIZE, PADDR((void *)pages), PTE_U | PTE_P);
-	.............
+	// Allocates a new env with env_alloc
+	result = env_alloc(&env, 0);
+	if (result == -E_NO_FREE_ENV)
+		panic("env_alloc: %e", result);
+
+	if (result == -E_NO_MEM)
+		panic("env_alloc: %e", result);
+
+	//Loads the named elf binary into it with load_icode
+	load_icode(env, binary);
+
+	//Set the newly allocated env's type
+	env->env_type = type;
 }
-	
-
 ```
 
 
 
-##### Question
+5. env_run
 
-##### Q2 What entries (rows) in the page directory have been filled in at this point? What addresses do they map and where do they point? In other words, fill out this table as much as possible:
+Switch environments and set the new environment's registers.
 
-| Entry | Base Virtual Address | Points to (logically)                            |
-| ----- | -------------------- | ------------------------------------------------ |
-| 1023  | 0xffc00000           | Page table for top 4MB of phys memory            |
-| 1022  | 0xff800000           | Page table for second top 4MB of physical memory |
-| 。    | ？                   | ？                                               |
-| 。    | ？                   | ？                                               |
-| 。    | ？                   | ？                                               |
-| 2     | 0x00800000           | Page table for third lowest 4MB of phys memory   |
-| 1     | 0x00400000           | Page table for second lowest 4MB of phys memory  |
-| 0     | 0x00000000           | Page table for lowest 4MB of phys memory         |
+```c
+void
+	env_run(struct Env * e)
+{
+	if (curenv != NULL && curenv->env_status == ENV_RUNNING)
+		curenv->env_type = ENV_RUNNABLE;
 
+	// Set 'curenv' to the new environment
+	curenv = e;
 
+	// Set its status to ENV_RUNNING,
+	curenv->env_type = ENV_RUNNING;
 
-##### Q3: We have placed the kernel and user environment in the same address space. Why will user programs not be able to read or write the kernel's memory? What specific mechanisms protect the kernel memory?
+	// Update its 'env_runs' counter
+	curenv->env_runs++;
 
-In kernel's memory, we don't set user permission to the page directory entry and page table entry. So user cannot read or write kernel memory.
+	// Use lcr3() to switch to its address space
+	lcr3(PADDR(e->env_pgdir));
 
+	// Use env_pop_tf() to restore the environment's
+	//	   registers and drop into user mode in the
+	//	   environment.
+	env_pop_tf(&e->env_tf);
 
-
-##### Q4: What is the maximum amount of physical memory that this operating system can support? Why?
-
-Since we store all `PageInfo` from `[UTOP, UTOP + PTSIZE)`, it limits the number of physical pages we can have. `PTSIZE` is `4096*1024=4MB`. `PageInfo` consists of two parts, first `PageInfo *pp_link`, which is a pointer and should be 4 Bytes, then `uint16_t pp_ref` , which should be 2 bytes. But we know that in 32 bit aligned system, address should be multiples of 4 Bytes. So `PageInfo` occupies 8 Bytes.
-
-So we can have `4M / 8 = 512K pages`. Since each page is `4KB`, total physical memory should not exceed `2GB`.
-
-
-
-##### Q5: How much space overhead is there for managing memory, if we actually had the maximum amount of physical memory? How is this overhead broken down?
-
-First we use `4M` space to store all the PageInfos. Since we use 10 bits to find page directory entry, we will have at most `1K` page table directory. Since each page directory entry is 4 Bytes, the page directory table will take `4K` in total. We need one page table entry for each pages and each entry takes up 4 Bytes. In total we use `4 * 512K = 2M`. 
-
-In total,  we need `4M + 4K + 2M = 6M + 2K`
+	panic("env_run not yet implemented");
+}
+```
 
 
 
-##### Q6: Revisit the page table setup in `kern/entry.S` and `kern/entrypgdir.c`. Immediately after we turn on paging, EIP is still a low number (a little over 1MB). At what point do we transition to running at an EIP above KERNBASE? What makes it possible for us to continue executing at a low EIP between when we enable paging and when we begin running at an EIP above KERNBASE? Why is this transition necessary?
+**Evaluation** Use make qemu-gdb and set a GDB breakpoint at `env_pop_tf`, which should be the last function you hit before actually entering user mode. Single step through this function using si; the processor should enter user mode after the `iret` instruction. You should then see the first instruction in the user environment's executable, which is the `cmpl` instruction at the label `start` in `lib/entry.S`. Now use b *0x... to set a breakpoint at the `int $0x30` in `sys_cputs()` in `hello` (see `obj/user/hello.asm` for the user-space address). This `int` is the system call to display a character to the console. If you cannot execute as far as the `int`, then something is wrong with your address space setup or program loading code; go back and fix it before continuing.
 
-First we set a breakpoint right after we set cr3.
+##### Test
+
+Enter gdb, see if we can successfully execute to the `int $0x30 ` instructions defined in user environment function `sys_calls`
 
 ```
-(gdb) b *0x100020
-Breakpoint 1 at 0x100020
+(gdb) b env_pop_tf
+Breakpoint 1 at 0xf0102e61: file kern/env.c, line 485.
 (gdb) c
 Continuing.
 The target architecture is assumed to be i386
-=> 0x100020:    or     $0x80010001,%eax
+=> 0xf0102e61 <env_pop_tf>:     push   %ebp
 
-Breakpoint 1, 0x00100020 in ?? ()
-eax            0x11                17
+Breakpoint 1, env_pop_tf (tf=0xf01f2000) at kern/env.c:485
+485     {
+(gdb) si
+=> 0xf0102e62 <env_pop_tf+1>:   mov    %esp,%ebp
+0xf0102e62      485     {
+(gdb) si
+=> 0xf0102e64 <env_pop_tf+3>:   sub    $0xc,%esp
+0xf0102e64      485     {
+(gdb) si
+=> 0xf0102e67 <env_pop_tf+6>:   mov    0x8(%ebp),%esp
+486             asm volatile(
+(gdb) si
+=> 0xf0102e6a <env_pop_tf+9>:   popa   
+0xf0102e6a      486             asm volatile(
+(gdb) si
+=> 0xf0102e6b <env_pop_tf+10>:  pop    %es
+0xf0102e6b in env_pop_tf (
+    tf=<error reading variable: Unknown argument list address for `tf'.>) at kern/env.c:486
+486             asm volatile(
+(gdb) si
+=> 0xf0102e6c <env_pop_tf+11>:  pop    %ds
+0xf0102e6c      486             asm volatile(
+(gdb) si
+=> 0xf0102e6d <env_pop_tf+12>:  add    $0x8,%esp
+0xf0102e6d      486             asm volatile(
+(gdb) si
+=> 0xf0102e70 <env_pop_tf+15>:  iret   
+0xf0102e70      486             asm volatile(
+(gdb) info register
+eax            0x0                 0
 ecx            0x0                 0
-edx            0xffffff40          -192
-ebx            0x10074             65652
-esp            0x7bec              0x7bec
-ebp            0x7bf8              0x7bf8
-esi            0x10074             65652
+edx            0x0                 0
+ebx            0x0                 0
+esp            0xf01f2030          0xf01f2030
+ebp            0x0                 0x0
+esi            0x0                 0
 edi            0x0                 0
-eip            0x100020            0x100020
-eflags         0x46                [ PF ZF ]
+eip            0xf0102e70          0xf0102e70 <env_pop_tf+15>
+eflags         0x96                [ PF AF SF ]
 cs             0x8                 8
 ss             0x10                16
-ds             0x10                16
-es             0x10                16
-fs             0x10                16
-gs             0x10                16
+ds             0x23                35
+es             0x23                35
+fs             0x23                35
+gs             0x23                35
+(gdb) si
+=> 0x800020:    cmp    $0xeebfe000,%esp			//first instruction we execute in entry.S
+0x00800020 in ?? ()													//See if we were started with arguments on the stack
+	cmpl $USTACKTOP, %esp
+
+(gdb) info register
+eax            0x0                 0
+ecx            0x0                 0
+edx            0x0                 0
+ebx            0x0                 0
+esp            0xeebfe000          0xeebfe000
+ebp            0x0                 0x0
+esi            0x0                 0
+edi            0x0                 0
+eip            0x800020            0x800020
+eflags         0x2                 [ ]
+cs             0x1b                27
+ss             0x23                35
+ds             0x23                35
+es             0x23                35
+fs             0x23                35
+gs             0x23                35
 ```
 
-We can see that eip is still at low address.
+Here we can see the register value are changed after we enter the user mode.
 
-It is after we jump to a new address will we reset `%eip` again.
+The code segment register's value correspond to the definition in function `env_alloc`
+
+```c
+int
+env_alloc(struct Env * *newenv_store, envid_t parent_id)
+{
+	............
+	e->env_tf.tf_ds = GD_UD | 3;
+	e->env_tf.tf_es = GD_UD | 3;
+	e->env_tf.tf_ss = GD_UD | 3;
+	e->env_tf.tf_esp = USTACKTOP;
+	e->env_tf.tf_cs = GD_UT | 3;
+	...........
+}
+```
+
+Then we continue executing. 
+
+Finally we are able to execute to this instruction, which means we did it :-D
+
+```
+(gdb) si
+=> 0x800a0a:    int    $0x30
+0x00800a0a in ?? ()
+```
+
+
+
+#### Handling Interrupts and Exceptions
+
+**Exercise 3.** Read [Chapter 9, Exceptions and Interrupts](https://pdos.csail.mit.edu/6.828/2018/readings/i386/c09.htm) in the [80386 Programmer's Manual](https://pdos.csail.mit.edu/6.828/2018/readings/i386/toc.htm) (or Chapter 5 of the [IA-32 Developer's Manual](https://pdos.csail.mit.edu/6.828/2018/readings/ia32/IA32-3A.pdf)), if you haven't already.
+
+##### Answer
+
+This link above provides us with the basic background knowledge about Interruptions and Exceptions needed in this lab. Reading it helps a lot for following exercises:-D
+
+
+
+**Exercise 4.** Edit `trapentry.S` and `trap.c` and implement the features described above. The macros `TRAPHANDLER` and `TRAPHANDLER_NOEC` in `trapentry.S` should help you, as well as the T_* defines in `inc/trap.h`. You will need to add an entry point in `trapentry.S` (using those macros) for each trap defined in `inc/trap.h`, and you'll have to provide _alltraps` which the `TRAPHANDLER` macros refer to. You will also need to modify `trap_init()` to initialize the `idt` to point to each of these entry points defined in `trapentry.S`; the `SETGATE` macro will be helpful here.
+
+Your `_alltraps` should:
+
+1. push values to make the stack look like a struct Trapframe
+2. load `GD_KD` into `%ds` and `%es`
+3. `pushl %esp` to pass a pointer to the Trapframe as an argument to trap()
+4. `call trap` (can `trap` ever return?)
+
+Consider using the `pushal` instruction; it fits nicely with the layout of the `struct Trapframe`.
+
+Test your trap handling code using some of the test programs in the `user` directory that cause exceptions before making any system calls, such as `user/divzero`. You should be able to get make grade to succeed on the `divzero`, `softint`, and `badsegment` tests at this point.
+
+##### Answer:
+
+First let's look at `trap.c`. Here we need to initializes the interrupt handler functions and insert them into the interrupt descriptor table. Just some trivial codes.
+
+```c
+oid
+trap_init(void)
+{
+	extern struct Segdesc gdt[];
+
+	// Define handler functions
+	void t_divide();
+	void t_debug();
+	void t_nmi();
+	void t_brkpt();
+	void t_oflow();
+	void t_bound();
+	void t_illop();
+	void t_device();
+	void t_dblflt();
+	void t_tss();
+	void t_segnp();
+	void t_stack();
+	void t_gpflt();
+	void t_pgflt();
+	void t_fperr();
+	void t_align();
+	void t_mchk();
+	void t_simderr();
+	void t_syscall();
+
+  // Add IDT's interrupt gates and trap gates
+	SETGATE(idt[T_DIVIDE], 0, GD_KT, t_divide, 0);
+	SETGATE(idt[T_DEBUG], 0, GD_KT, t_debug, 0);
+	SETGATE(idt[T_NMI], 0, GD_KT, t_nmi, 0);
+	SETGATE(idt[T_BRKPT], 1, GD_KT, t_brkpt, 0);
+	SETGATE(idt[T_OFLOW], 1, GD_KT, t_oflow, 0);
+	SETGATE(idt[T_BOUND], 0, GD_KT, t_bound, 0);
+	SETGATE(idt[T_ILLOP], 0, GD_KT, t_illop, 0);
+	SETGATE(idt[T_DEVICE], 0, GD_KT, t_device, 0);
+	SETGATE(idt[T_DBLFLT], 0, GD_KT, t_dblflt, 0);
+	SETGATE(idt[T_TSS], 0, GD_KT, t_tss, 0);
+	SETGATE(idt[T_SEGNP], 0, GD_KT, t_segnp, 0);
+	SETGATE(idt[T_STACK], 0, GD_KT, t_stack, 0);
+	SETGATE(idt[T_GPFLT], 0, GD_KT, t_gpflt, 0);
+	SETGATE(idt[T_PGFLT], 0, GD_KT, t_pgflt, 0);
+	SETGATE(idt[T_FPERR], 0, GD_KT, t_fperr, 0);
+	SETGATE(idt[T_ALIGN], 0, GD_KT, t_align, 0);
+	SETGATE(idt[T_MCHK], 0, GD_KT, t_mchk, 0);
+	SETGATE(idt[T_SIMDERR], 0, GD_KT, t_simderr, 0);
+
+	SETGATE(idt[T_SYSCALL], 1, GD_KT, t_syscall, 3);
+
+	// Per-CPU setup 
+	trap_init_percpu();
+}
+```
+
+Then we need to add interrupt entry into `trapentry.S`
+
+There are two macros available in `trapentry.S`, which defines a globally visible function for handling a trap. If the trap has no error code, we push a zero in order to keep it in the same form of `Trapframe`.
+
+According to the [interrupt info](https://pdos.csail.mit.edu/6.828/2018/readings/i386/s09_09.htm) given by the lab materials, we create handler functions for each trap.
 
 ```assembly
-	mov	$relocated, %eax
-f0100028:	b8 2f 00 10 f0       	mov    $0xf010002f,%eax
-	jmp	*%eax
-f010002d:	ff e0                	jmp    *%eax
+/*
+ * Lab 3: Your code here for generating entry points for the different traps.
+ */
+TRAPHANDLER_NOEC(t_divide, T_DIVIDE);	// 0  divide error
+TRAPHANDLER_NOEC(t_debug,  T_DEBUG);	// 1  debug exception
+TRAPHANDLER_NOEC(t_nmi, T_NMI);				// 2  non-maskable interrupt
+TRAPHANDLER_NOEC(t_brkpt, T_BRKPT);		// 3  breakpoint
+TRAPHANDLER_NOEC(t_oflow, T_OFLOW);		// 4  overflow
+TRAPHANDLER_NOEC(t_bound, T_BOUND);		// 5  bounds check	
+TRAPHANDLER_NOEC(t_illop, T_ILLOP);		// 6  illegal opcode
+TRAPHANDLER_NOEC(t_device, T_DEVICE);	// 7  device not available
+
+TRAPHANDLER(t_dblflt, T_DBLFLT);			// 8  double fault
+TRAPHANDLER(t_tss, T_TSS);						// 10 invalid task switch segment
+TRAPHANDLER(t_segnp, T_SEGNP);				// 11 segment not present
+TRAPHANDLER(t_stack, T_STACK);				// 12 stack exception
+TRAPHANDLER(t_gpflt, T_GPFLT);				// 13 general protection fault
+TRAPHANDLER(t_pgflt, T_PGFLT);				// 14 page fault
+
+TRAPHANDLER_NOEC(t_fperr, T_FPERR);		// 16 floating point error
+
+TRAPHANDLER(t_align, T_ALIGN);				// 17 aligment check
+
+TRAPHANDLER_NOEC(t_mchk, T_MCHK);			// 18 machine check
+TRAPHANDLER_NOEC(t_simderr, T_SIMDERR);	// 19 SIMD floating point error
+TRAPHANDLER_NOEC(t_syscall, T_SYSCALL);	// 19 SIMD floating point error
 ```
 
-```
-(gdb) b *0xf0100034
-Breakpoint 1 at 0xf0100034: file kern/entry.S, line 77.
-(gdb) c
-Continuing.
-The target architecture is assumed to be i386
-=> 0xf0100034 <relocated+5>:    mov    $0xf0116000,%esp
+According to the Trapframe definition, we need to push the values from bottom to the top, from `esp` to `tf_regs`. In the macros, we only push to `trap_no`. So we still need to push `es` and `ds`.Then we use `pushal` to push all general registers.
 
-Breakpoint 1, relocated () at kern/entry.S:77
-77              movl    $(bootstacktop),%esp
-(gdb) info register
-eax            0xf010002f          -267386833
-ecx            0x0                 0
-edx            0xffffff40          -192
-ebx            0x10074             65652
-esp            0x7bec              0x7bec
-ebp            0x0                 0x0
-esi            0x10074             65652
-edi            0x0                 0
-eip            0xf0100034          0xf0100034 <relocated+5>
-eflags         0x86                [ PF SF ]
-cs             0x8                 8
-ss             0x10                16
-ds             0x10                16
-es             0x10                16
+Then we load kernel data into `ds` and `es` to switch to kernel mode. Since the definition of trap functions is `void trap(struct Trapframe *tf)`, we also need to push stack pointer as parameters. Finally we call `trap `to handle the traps.
+
+```assembly
+_alltraps: 
+	// 1. push values to make the stack look like a struct Trapframe
+    pushl %ds
+    pushl %es
+    pushal
+
+	// 2. load GD_KD into %ds and %es
+    movw $GD_KD, %ax
+    movw %ax, %ds
+    movw %ax, %es
+
+	// 3. pushl %esp to pass a pointer to the Trapframe as an argument to trap()
+	pushl %esp
+
+	// 4. call trap
+    call trap
 ```
 
-With this transaction, we can use virtual address for page translation so that we can solve the memory waste issue and keep the user and kernel space from eacb other.
+
+
+**Questions**
+
+1. What is the purpose of having an individual handler function for each exception/interrupt? (i.e., if all exceptions/interrupts were delivered to the same handler, what feature that exists in the current implementation could not be provided?)
+
+   ##### Answer:
+
+   If we handle all exceptions or interrupts with an individual handler function, we will need to use a lot of condition instructions in our functions and it is hard to realize. What's more, they have different return sentences. For example, a `divdie zero` function may not return, while an `system call` will return back to the user environment after the system function call. 
 
 
 
+2. Did you have to do anything to make the `user/softint` program behave correctly? The grade script expects it to produce a general protection fault (trap 13), but `softint`'s code says `int $14`. *Why* should this produce interrupt vector 13? What happens if the kernel actually allows `softint`'s `int $14` instruction to invoke the kernel's page fault handler (which is interrupt vector 14)?
 
+   ##### Answer: 
+
+   Let's look at the definitions in `softint` and `grade-lab3`
+
+   ```c
+   void
+   umain(int argc, char **argv)
+   {
+   	asm volatile("int $14");	// page fault
+   }
+   ```
+
+   ```c
+   @test(10)
+   def test_softint():
+       r.user_test("softint")
+       r.match('Welcome to the JOS kernel monitor!',
+               'Incoming TRAP frame at 0xefffffbc',
+               'TRAP frame at 0xf.......',
+               '  trap 0x0000000d General Protection',
+               '  eip  0x008.....',
+               '  ss   0x----0023',
+               '.00001000. free env 0000100')
+   ```
+
+   Since we are still in user mode when we call `int $14 ` and our priviledge level is 3, however `int` is a system call, which priviledge level is 0. So it triggers the fault general protection error instead of page fault error. 
+
+   If system calls are allowed to be called from user environment, it will cause huge seurity issues and the misuse of the user will probably let the whole OS breakdown.
 

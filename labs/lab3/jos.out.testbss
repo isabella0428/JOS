@@ -1,0 +1,40 @@
++ ld obj/kern/kernel
+i386-elf-ld: warning: section `.bss' type changed to PROGBITS
++ mk obj/kern/kernel.img
+
+(process:4088): GLib-WARNING **: 23:24:51.448: ../glib/gmem.c:490: custom memory allocation vtable not supported
+
+(process:4093): GLib-WARNING **: 23:24:51.473: ../glib/gmem.c:490: custom memory allocation vtable not supported
+6828 decimal is XXX octal!
+Physical memory: 131072K available, base = 640K, extended = 130432K
+check_page_free_list() succeeded!
+check_page_alloc() succeeded!
+check_page() succeeded!
+check_kern_pgdir() succeeded!
+check_page_free_list() succeeded!
+check_page_installed_pgdir() succeeded!
+[00000000] new env 00001000
+Incoming TRAP frame at 0xefffffbc
+TRAP frame at 0xf01f3000
+  edi  0x00000000
+  esi  0x00000000
+  ebp  0xeebfde60
+  oesp 0xefffffdc
+  ebx  0x00000000
+  edx  0xeebfde88
+  ecx  0x0000001f
+  eax  0x00000000
+  es   0x----0023
+  ds   0x----0023
+  trap 0x00000030 System call
+  err  0x00000000
+  eip  0x00800aca
+  cs   0x----001b
+  flag 0x00000092
+  esp  0xeebfde54
+  ss   0x----0023
+[00001000] free env 00001000
+Destroyed the only environment - nothing more to do!
+Welcome to the JOS kernel monitor!
+Type 'help' for a list of commands.
+qemu: terminating on signal 15 from pid 3992
