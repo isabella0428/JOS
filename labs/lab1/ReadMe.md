@@ -758,7 +758,7 @@ According to the comment, we succesffuly figure out that the lower bits of c sho
 
 5. Finally the result
 
-   ![image-20191016173102214](/Users/isabella/Desktop/JOS/labs/lab1/ReadMe.assets/image-20191016173102214.png)
+   ![image-20191016173102214](ReadMe.assets/image-20191016173102214.png)
 
 
 
