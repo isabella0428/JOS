@@ -2,6 +2,7 @@
 // entry.S already took care of defining envs, pages, uvpd, and uvpt.
 
 #include <inc/lib.h>
+#include <inc/env.h>
 
 extern void umain(int argc, char **argv);
 
@@ -13,12 +14,13 @@ libmain(int argc, char **argv)
 {
 	// set thisenv to point at our Env structure in envs[].
 	// LAB 3: Your code here.
-	thisenv = 0;
+	struct Env curenv = envs[ENVX(sys_getenvid())];
+	thisenv = &curenv;
 
 	// save the name of the program so that panic() can use it
 	if (argc > 0)
 		binaryname = argv[0];
-
+	
 	// call user main routine
 	umain(argc, argv);
 

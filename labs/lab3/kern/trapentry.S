@@ -68,7 +68,7 @@ TRAPHANDLER(t_align, T_ALIGN);			// 17 aligment check
 
 TRAPHANDLER_NOEC(t_mchk, T_MCHK);		// 18 machine check
 TRAPHANDLER_NOEC(t_simderr, T_SIMDERR);	// 19 SIMD floating point error
-TRAPHANDLER_NOEC(t_syscall, T_SYSCALL);	// 19 SIMD floating point error
+TRAPHANDLER_NOEC(t_syscall, T_SYSCALL);	// 48 SIMD floating point error
 
  
 /* Lab 3: Your code here for _alltraps */

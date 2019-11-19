@@ -530,7 +530,6 @@ void
 
 	// LAB 3: Your code here.
 	// Set the current environment(if any) back to ENV_RUNNABLE if it is ENV_RUNNING
-
 	
 	if (curenv != NULL && curenv->env_status == ENV_RUNNING)
 		curenv->env_type = ENV_RUNNABLE;
@@ -539,18 +538,19 @@ void
 	curenv = e;
 
 	// Set its status to ENV_RUNNING,
-	curenv->env_type = ENV_RUNNING;
+	curenv->env_status = ENV_RUNNING;
 
 	// Update its 'env_runs' counter
 	curenv->env_runs++;
 
 	// Use lcr3() to switch to its address space
-	lcr3(PADDR(e->env_pgdir));
+	lcr3(PADDR(curenv->env_pgdir));
 
 	// Use env_pop_tf() to restore the environment's
 	//	   registers and drop into user mode in the
 	//	   environment.
-	env_pop_tf(&e->env_tf);
+
+	env_pop_tf(&curenv->env_tf);
 
 	// panic("env_run not yet implemented");
 }

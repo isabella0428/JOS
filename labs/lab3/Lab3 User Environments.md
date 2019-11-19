@@ -264,20 +264,21 @@ void
 	curenv = e;
 
 	// Set its status to ENV_RUNNING,
-	curenv->env_type = ENV_RUNNING;
+	curenv->env_status = ENV_RUNNING;
 
 	// Update its 'env_runs' counter
 	curenv->env_runs++;
 
 	// Use lcr3() to switch to its address space
-	lcr3(PADDR(e->env_pgdir));
+	lcr3(PADDR(curenv->env_pgdir));
 
 	// Use env_pop_tf() to restore the environment's
 	//	   registers and drop into user mode in the
 	//	   environment.
-	env_pop_tf(&e->env_tf);
 
-	panic("env_run not yet implemented");
+	env_pop_tf(&curenv->env_tf);
+
+	// panic("env_run not yet implemented");
 }
 ```
 
@@ -487,29 +488,29 @@ According to the [interrupt info](https://pdos.csail.mit.edu/6.828/2018/readings
 /*
  * Lab 3: Your code here for generating entry points for the different traps.
  */
-TRAPHANDLER_NOEC(t_divide, T_DIVIDE);	// 0  divide error
-TRAPHANDLER_NOEC(t_debug,  T_DEBUG);	// 1  debug exception
-TRAPHANDLER_NOEC(t_nmi, T_NMI);				// 2  non-maskable interrupt
-TRAPHANDLER_NOEC(t_brkpt, T_BRKPT);		// 3  breakpoint
-TRAPHANDLER_NOEC(t_oflow, T_OFLOW);		// 4  overflow
-TRAPHANDLER_NOEC(t_bound, T_BOUND);		// 5  bounds check	
-TRAPHANDLER_NOEC(t_illop, T_ILLOP);		// 6  illegal opcode
-TRAPHANDLER_NOEC(t_device, T_DEVICE);	// 7  device not available
+TRAPHANDLER_NOEC(t_divide, T_DIVIDE);		// 0  divide error
+TRAPHANDLER_NOEC(t_debug,  T_DEBUG);		// 1  debug exception
+TRAPHANDLER_NOEC(t_nmi, T_NMI);					// 2  non-maskable interrupt
+TRAPHANDLER_NOEC(t_brkpt, T_BRKPT);			// 3  breakpoint
+TRAPHANDLER_NOEC(t_oflow, T_OFLOW);			// 4  overflow
+TRAPHANDLER_NOEC(t_bound, T_BOUND);			// 5  bounds check	
+TRAPHANDLER_NOEC(t_illop, T_ILLOP);			// 6  illegal opcode
+TRAPHANDLER_NOEC(t_device, T_DEVICE);		// 7  device not available
 
-TRAPHANDLER(t_dblflt, T_DBLFLT);			// 8  double fault
-TRAPHANDLER(t_tss, T_TSS);						// 10 invalid task switch segment
-TRAPHANDLER(t_segnp, T_SEGNP);				// 11 segment not present
-TRAPHANDLER(t_stack, T_STACK);				// 12 stack exception
-TRAPHANDLER(t_gpflt, T_GPFLT);				// 13 general protection fault
-TRAPHANDLER(t_pgflt, T_PGFLT);				// 14 page fault
+TRAPHANDLER(t_dblflt, T_DBLFLT);				// 8  double fault
+TRAPHANDLER(t_tss, T_TSS);							// 10 invalid task switch segment
+TRAPHANDLER(t_segnp, T_SEGNP);					// 11 segment not present
+TRAPHANDLER(t_stack, T_STACK);					// 12 stack exception
+TRAPHANDLER(t_gpflt, T_GPFLT);					// 13 general protection fault
+TRAPHANDLER(t_pgflt, T_PGFLT);					// 14 page fault
 
-TRAPHANDLER_NOEC(t_fperr, T_FPERR);		// 16 floating point error
+TRAPHANDLER_NOEC(t_fperr, T_FPERR);			// 16 floating point error
 
-TRAPHANDLER(t_align, T_ALIGN);				// 17 aligment check
+TRAPHANDLER(t_align, T_ALIGN);					// 17 aligment check
 
-TRAPHANDLER_NOEC(t_mchk, T_MCHK);			// 18 machine check
+TRAPHANDLER_NOEC(t_mchk, T_MCHK);				// 18 machine check
 TRAPHANDLER_NOEC(t_simderr, T_SIMDERR);	// 19 SIMD floating point error
-TRAPHANDLER_NOEC(t_syscall, T_SYSCALL);	// 19 SIMD floating point error
+TRAPHANDLER_NOEC(t_syscall, T_SYSCALL);	// 48 SIMD floating point error
 ```
 
 According to the Trapframe definition, we need to push the values from bottom to the top, from `esp` to `tf_regs`. In the macros, we only push to `trap_no`. So we still need to push `es` and `ds`.Then we use `pushal` to push all general registers.
@@ -574,6 +575,518 @@ _alltraps:
                '.00001000. free env 0000100')
    ```
 
-   Since we are still in user mode when we call `int $14 ` and our priviledge level is 3, however `int` is a system call, which priviledge level is 0. So it triggers the fault general protection error instead of page fault error. 
+   Since we are still in user mode when we call `int $14 ` and our priviledge level is 3, however `int` is a system call, which priviledge level is 0. Then OS will handle this exception in kernel mode. So it triggers the fault general protection error instead of page fault error. 
 
    If system calls are allowed to be called from user environment, it will cause huge seurity issues and the misuse of the user will probably let the whole OS breakdown.
+
+
+
+### Part B: Page Faults, Breakpoints Exceptions, and System Calls
+
+#### Handling Page Faults
+
+page fault is an important exception that we are gonna handle. When the processor takes a page fault, it stores the linear address that caused the fault in a special processor control register, CR2. 
+
+
+
+**Exercise 5.** Modify `trap_dispatch()` to dispatch page fault exceptions to `page_fault_handler()`. You should now be able to get make grade to succeed on the `faultread`, `faultreadkernel`, `faultwrite`, and `faultwritekernel` tests. If any of them don't work, figure out why and fix them. Remember that you can boot JOS into a particular user program using make run-*x* or make run-*x*-nox. For instance, make run-hello-nox runs the *hello* user program.
+
+##### Answer
+
+This one is simple. Just check if `tf` 's `trap_no` is 14, call `page_fault_handler` to handle the fault.
+
+```c
+static void
+trap_dispatch(struct Trapframe *tf)
+{
+	// Handle processor exceptions.
+	// LAB 3: Your code here.
+	if(tf->tf_trapno == 14) {
+    page_fault_handler(tf);
+    return;
+  }
+
+	// Unexpected trap: The user process or the kernel has a bug.
+	print_trapframe(tf);
+	if (tf->tf_cs == GD_KT)
+		panic("unhandled trap in kernel");
+	else {
+		env_destroy(curenv);
+		return;
+	}
+}
+```
+
+
+
+**Exercise 6.** Modify `trap_dispatch()` to make breakpoint exceptions invoke the kernel monitor. You should now be able to get make grade to succeed on the `breakpoint` test.
+
+This is just like the previous exercise.  Just need to make sure that u set the priviledge of breakpoint execption to 3. Otherwise it will cause general protection error instead of breakpoint execption.
+
+```c
+static void
+trap_dispatch(struct Trapframe *tf)
+{
+	// Handle processor exceptions.
+	// LAB 3: Your code here.
+	// Check if it is a page fault
+	if(tf->tf_trapno == 14) {
+    	page_fault_handler(tf);
+    	return;
+  }
+
+	// Check if it is a breakpoint exception
+	if(tf->tf_trapno == 3) {
+    monitor(tf);
+    return;
+  }
+
+	// Unexpected trap: The user process or the kernel has a bug.
+	print_trapframe(tf);
+	if (tf->tf_cs == GD_KT)
+		panic("unhandled trap in kernel");
+	else {
+		env_destroy(curenv);
+		return;
+	}
+}
+```
+
+
+
+**Questions**
+
+1. The break point test case will either generate a break point exception or a general protection fault depending on how you initialized the break point entry in the IDT (i.e., your call to `SETGATE` from `trap_init`). Why? How do you need to set it up in order to get the breakpoint exception to work as specified above and what incorrect setup would cause it to trigger a general protection fault?
+
+   ##### Answer:
+
+   As mentioned above, we need to call `SETGATE` to set the priviledge of `breakpoint exception` to be 3 instead of 0. So that the user can cause the breakpoint exception from user mode without causing general protection fault.
+
+   
+
+2. What do you think is the point of these mechanisms, particularly in light of what the `user/softint` test program does?
+
+   ##### Answer
+
+   We use interrupt descriptor table to set priviledge level of each interrupts so that we can distinguish different kinds of excptions and faults and handle them properly. If the fault cannot be caused when we are in the user mode, the protection mechanisum will work and protect the illegal operation by triggering the general protection fault.
+
+
+
+#### System Call
+
+**Exercise 7.** Add a handler in the kernel for interrupt vector `T_SYSCALL`. You will have to edit `kern/trapentry.S` and `kern/trap.c`'s `trap_init()`. You also need to change `trap_dispatch()` to handle the system call interrupt by calling `syscall()` (defined in `kern/syscall.c`) with the appropriate arguments, and then arranging for the return value to be passed back to the user process in `%eax`. Finally, you need to implement `syscall()` in `kern/syscall.c`. Make sure `syscall()` returns `-E_INVAL` if the system call number is invalid. You should read and understand `lib/syscall.c` (especially the inline assembly routine) in order to confirm your understanding of the system call interface. Handle all the system calls listed in `inc/syscall.h` by invoking the corresponding kernel function for each call.
+
+Run the `user/hello` program under your kernel (make run-hello). It should print "`hello, world`" on the console and then cause a page fault in user mode. If this does not happen, it probably means your system call handler isn't quite right. You should also now be able to get make grade to succeed on the `testbss` test.
+
+##### Answer:
+
+1. Edit `trapentry.S` and `trap.c` to add gate of IDT and entry points for `int 0x30`. 
+
+```assembly
+// trayentry.S
+TRAPHANDLER_NOEC(t_syscall, T_SYSCALL);	// 19 SIMD floating point error
+```
+
+```c
+// trap.c: trap()
+void trap_init(void) {
+  .................
+	void t_syscall();
+  .................
+	//Remember to set the priviledge to be 3 so that it can be triggered in user mode
+	SETGATE(idt[T_SYSCALL], 1, GD_KT, t_syscall, 3); 
+}
+```
+
+2. Modify `trap_dispatch()` to call `syscall` handler in`kern/syscall.c`.
+
+In addition to trap numbers, we also need system call types and parameters to deal with it. According to the descriptions above, system call numbers and its parameters are stored in the general registers in trapframe, `eax`, `edx`, `ecx`, `ebx`, `edi` and `esi`. 
+
+We should first determine if the system call number is implemented in system calls. 
+
+As defined in `inc/syscall.h`, there are five types in total. However, `kern/syscall.c` only implement the first four. So we will continue execute `syscall` in kernel mode only if the system number stored in `%eax` ranges from 0 to 4.
+
+```c
+enum {
+	SYS_cputs = 0,
+	SYS_cgetc,
+	SYS_getenvid,
+	SYS_env_destroy,
+	NSYSCALLS
+};
+```
+
+
+
+Then we call the kernel version `syscall` to handle `syscall trap` . In order to pass the return value of `syscall` to user mode, we just need to store it in `tf` since `tf`  's  register values will be popped out after we return back to user mode. 
+
+```c
+static void trap_dispatch(struct Trapframe *tf) {
+		if(tf->tf_trapno == T_SYSCALL) {
+		struct PushRegs regs = tf->tf_regs;
+		if (regs.reg_eax >= NSYSCALLS)
+			return;
+		result = syscall(regs.reg_eax, regs.reg_edx, regs.reg_ecx,
+							regs.reg_ebx, regs.reg_edi, regs.reg_esi);
+		(tf->tf_regs).reg_eax = result;
+		return;
+	}
+}
+```
+
+4. Modify kernel version `syscall` to call the kernel functions
+
+```c
+// Dispatches to the correct kernel function, passing the arguments.
+int32_t
+syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5)
+{
+	// Call the function corresponding to the 'syscallno' parameter.
+	// Return any appropriate return value.
+	// LAB 3: Your code here.
+
+	// panic("syscall not implemented");
+
+	switch (syscallno) {
+		case SYS_cputs:
+			sys_cputs((const char*)a1, (size_t)a2);
+			return 0;
+		case SYS_cgetc:
+			return sys_cgetc();
+		case SYS_getenvid:
+			return sys_getenvid();
+		case SYS_env_destroy:
+			return sys_env_destroy((envid_t)a1);
+		default:
+			return -E_INVAL;
+	}
+}
+```
+
+
+
+#### User mode start-up
+
+**Exercise 8.** Add the required code to the user library, then boot your kernel. You should see `user/hello` print "`hello, world`" and then print "`i am environment 00001000`". `user/hello` then attempts to "exit" by calling `sys_env_destroy()` (see `lib/libmain.c` and `lib/exit.c`). Since the kernel currently only supports one user environment, it should report that it has destroyed the only environment and then drop into the kernel monitor. You should be able to get make grade to succeed on the `hello` test.
+
+##### Answer
+
+To answer this question, let's first look at the definition of `envid_t` in `inc/env.h`.
+
+```c
++1+---------------21-----------------+--------10--------+
+|0|          Uniqueifier             |   Environment    |
+| |                                  |      Index       |
++------------------------------------+------------------+
+                                      \--- ENVX(eid) --/
+```
+
+There are 32 bits in total, low 10 bits for environment index, which is also the index of `envs` array and the high 21 bits for environment uniqueifiers and the highest sign bit to signal errors(if the highest bit is one, it means something is going wrong.) 
+
+We need the uniqueifiers because we can create the same environment with same environment index at different times, so we need something other than the environment index to signal this point.
+
+We can use macros defined in `inc/env.h` to get the environment index.
+
+```c
+#define ENVX(envid)		((envid) & (NENV - 1))
+```
+
+It gets us low 10 bits of the envid.
+
+Then we use the environment index to help us find the correct address in `envs`.
+
+```c
+void
+libmain(int argc, char **argv)
+{
+	// set thisenv to point at our Env structure in envs[].
+	// LAB 3: Your code here.
+	struct Env curenv = envs[ENVX(sys_getenvid())];
+	thisenv = &curenv;
+
+	// save the name of the program so that panic() can use it
+	if (argc > 0)
+		binaryname = argv[0];
+	
+	// call user main routine
+	umain(argc, argv);
+
+	// exit gracefully
+	exit();
+}
+```
+
+
+
+#### Page faults and memory protection
+
+**Exercise 9.** Change `kern/trap.c` to panic if a page fault happens in kernel mode.
+
+Hint: to determine whether a fault happened in user mode or in kernel mode, check the low bits of the `tf_cs`.
+
+Read `user_mem_assert` in `kern/pmap.c` and implement `user_mem_check` in that same file.
+
+Change `kern/syscall.c` to sanity check arguments to system calls.
+
+Boot your kernel, running `user/buggyhello`. The environment should be destroyed, and the kernel should *not* panic. You should see:
+
+```
+	[00001000] user_mem_check assertion failure for va 00000001
+	[00001000] free env 00001000
+	Destroyed the only environment - nothing more to do!
+	
+```
+
+Finally, change `debuginfo_eip` in `kern/kdebug.c` to call `user_mem_check` on `usd`, `stabs`, and `stabstr`. If you now run `user/breakpoint`, you should be able to run backtrace from the kernel monitor and see the backtrace traverse into `lib/libmain.c` before the kernel panics with a page fault. What causes this page fault? You don't need to fix it, but you should understand why it happens.
+
+##### Answer
+
+1. Change `kern/trap.c` to panic if a page fault happens in kernel mode
+
+   If `tf->tf_cs` is equal to `UD_KT`, then it is in kernel mode
+
+```c
+void
+page_fault_handler(struct Trapframe *tf)
+{
+	........
+	if (tf->tf_cs == GD_KT) {
+		panic("Kernel Page Fault!");
+	}
+	........
+}
+```
+
+
+
+2. implement `user_mem_check`
+
+This function is intended to check if the address is accessible with given permission.
+
+It is much like the previous page operations. We can use `pfdir_walk` implemented in lab2 to get the page directory entry of the given virtual address. Then we find out if it is a accessible by user.
+
+A virtual address is accessibleif it meets all three requirements:
+
+* Page entry of `va` is not NULL(the virtual address is allocated)
+
+* `va` is below the user address space limit `ULIM`
+* Page entry of `va` contains the permission we require in `perm`
+
+When there is something wrong with the pages, we need to return the first address of the illegal address space. Remember to return `va` and `va + len` when we fail in the first or last page.
+
+```c
+int
+user_mem_check(struct Env *env, const void *va, size_t len, int perm)
+{
+	// LAB 3: Your code here.
+	const char* start_addr = ROUNDDOWN(va, PGSIZE);
+	const char* end_addr = ROUNDUP(va + len, PGSIZE);
+
+	for(const char* addr = start_addr; addr <= end_addr; addr += PGSIZE) {
+		pte_t* pg_entry = pgdir_walk(curenv->env_pgdir, addr, 0);
+
+		// A user program can access a virtual address
+		// (1) the address is below ULIM
+		// (2) the page table gives it permission.
+		
+		if (pg_entry == NULL || addr > (const char *)ULIM 
+			&& (*pg_entry && 3) < perm) 
+		{
+			user_mem_check_addr = (uintptr_t)addr;
+			// Notice that the first erroneous address is va
+			if(addr == start_addr)
+				user_mem_check_addr = (uintptr_t)va;
+			// Notice that the first erroneous address is (va+len)
+			else if (addr + PGSIZE == end_addr) {
+				user_mem_check_addr = (uintptr_t)va;
+			}
+			return -E_FAULT;
+		}
+	}
+	return 0;
+}
+```
+
+
+
+3. Change `kern/syscall.c` to sanity check arguments to system calls
+
+Check if the virtual address from `a1` to `a1+a2` is accessible to the user.
+
+```c
+// Dispatches to the correct kernel function, passing the arguments.
+int32_t
+syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5)
+{
+	// Call the function corresponding to the 'syscallno' parameter.
+	// Return any appropriate return value.
+	// LAB 3: Your code here.
+
+	// panic("syscall not implemented");
+	switch (syscallno) {
+		case SYS_cputs:
+			// Check whether parameters are valid
+			user_mem_assert(curenv, (void *)a1, (size_t)a2, PTE_P);
+			sys_cputs((const char*)a1, (size_t)a2);
+			return 0;
+		case SYS_cgetc:
+			return sys_cgetc();
+		case SYS_getenvid:
+			return sys_getenvid();
+		case SYS_env_destroy:
+			// Check whether parameters are valid
+			// user_mem_assert(curenv, (void *)a1, (size_t)PGSIZE, PTE_U);
+			sys_env_destroy((envid_t)a1);
+			return 0;
+		default:
+			return -E_INVAL;
+	}
+}
+```
+
+Okay, now that we finish all the codes required in this exercise, it's time to test it.
+
+Let's run `make-buggyhello-nox` in terminal.
+
+```
+[00000000] new env 00001000
+Incoming TRAP frame at 0xefffffbc
+Incoming TRAP frame at 0xefffffbc
+[00001000] user_mem_check assertion failure for va 00000001
+[00001000] free env 00001000
+Destroyed the only environment - nothing more to do!
+```
+
+It shows the same info given by the lab website, which means the codes we just written are correct :-D
+
+
+
+4. Change s in `kern/kdebug.c` to call `user_mem_check` on `usd`, `stabs`, and `stabstr`
+
+Here we call `user_mem_check` to check if `usd`, `stabs`, `stabstr` are accessible by the users.
+
+```c
+int
+debuginfo_eip(uintptr_t addr, struct Eipdebuginfo *info)
+{
+		..............
+		user_mem_check(curenv, usd, stab_end - stabs, PTE_U);
+		user_mem_check(curenv, stabstr, stabstr_end - stabstr, PTE_U);
+		..............
+		for(struct Stab* st = (struct Stab*)stabs; st <= stab_end; ++st) {
+			user_mem_check(curenv, (void *)st, sizeof(struct Stab), PTE_U);
+		}
+		.............
+}
+```
+
+
+
+Okay now we finish this exercise 9 :-D
+
+When we run `make run-breakpoint-nox` in the terminal, these show up
+
+```
+(base) ➜  lab3 git:(master) ✗ make run-breakpoint-nox
+	................
+	TRAP frame at 0xf01f4000
+    edi  0xeebfdfd8
+    esi  0xeec00060
+    ebp  0xeebfdff0
+    oesp 0xefffffdc
+    ebx  0x00000000
+    edx  0x00000000
+    ecx  0x00000000
+    eax  0xeebfdf78
+    es   0x----0023
+    ds   0x----0023
+    trap 0x00000003 Breakpoint
+    err  0x00000000
+    eip  0x00800034
+    cs   0x----001b
+    flag 0x00000082
+    esp  0xeebfdf64
+  ...................
+```
+
+It is clear to see that it has triggered the `breakpoint trap`.
+
+However, when we then input `backtrace` in `qemu` terminal, something "weird" happens.
+
+```
+K> backtrace
+Incoming TRAP frame at 0xeffffee8
+kernel panic at kern/trap.c:274: Kernel Page Fault!
+```
+
+It shows kernel page fault this time. 
+
+Well, it is not hard to understand. Let's look at `mon_backtrace`'s definition.
+
+```c
+int
+mon_backtrace(int argc, char **argv, struct Trapframe *tf)
+{
+	..........
+  //Print debuging info
+  debuginfo_eip(eip, &info);
+  ..........
+}
+```
+
+Function `backtrace` calls our new function `debuginfo_eip`, which will check if `usd`, `stabs`, `stabstr` are accessible by the users. If they are inaccessible, it will cause kernel page fault :-D
+
+
+
+**Exercise 10.** Boot your kernel, running `user/evilhello`. The environment should be destroyed, and the kernel should not panic. You should see:
+
+```
+	[00000000] new env 00001000
+	...
+	[00001000] user_mem_check assertion failure for va f010000c
+	[00001000] free env 00001000
+```
+
+Let's try out this test.
+
+Run `make run-evilhello-nox` in terminal.
+
+```c
+...........................
+[00000000] new env 00001000
+Incoming TRAP frame at 0xefffffbc
+Incoming TRAP frame at 0xefffffbc
+[00001000] user_mem_check assertion failure for va f010000c
+[00001000] free env 00001000
+...........................
+```
+
+It is gladly the same with the given output message :-D
+
+
+
+### Final Test with 'make grade'
+
+```
+divzero: OK (1.2s) 
+softint: OK (1.3s) 
+badsegment: OK (1.8s) 
+Part A score: 30/30
+
+faultread: OK (1.8s) 
+faultreadkernel: OK (1.0s) 
+faultwrite: OK (1.4s) 
+faultwritekernel: OK (1.8s) 
+breakpoint: OK (1.8s) 
+testbss: OK (1.1s) 
+hello: OK (1.3s) 
+buggyhello: OK (1.9s) 
+buggyhello2: OK (1.7s) 
+evilhello: <gradelib.Runner object at 0x10b3744a8>
+OK (0.9s) 
+Part B score: 50/50
+
+Score: 80/80
+```
+
+That't it for the lab3. See u at next lab :)
