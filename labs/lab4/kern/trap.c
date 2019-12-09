@@ -144,21 +144,22 @@ trap_init_percpu(void)
 	// user space on that CPU.
 	//
 	// LAB 4: Your code here:
+	uint8_t cpu_id = thiscpu->cpu_id;
 
 	// Setup a TSS so that we get the right stack
 	// when we trap to the kernel.
-	ts.ts_esp0 = KSTACKTOP;
-	ts.ts_ss0 = GD_KD;
-	ts.ts_iomb = sizeof(struct Taskstate);
+	thiscpu->cpu_ts.ts_esp0 = KSTACKTOP - cpu_id * (KSTKSIZE + KSTKGAP);
+	thiscpu->cpu_ts.ts_ss0 = GD_KD;
+	thiscpu->cpu_ts.ts_iomb = sizeof(struct Taskstate);
 
 	// Initialize the TSS slot of the gdt.
-	gdt[GD_TSS0 >> 3] = SEG16(STS_T32A, (uint32_t) (&ts),
+	gdt[(GD_TSS0 >> 3) + cpu_id] = SEG16(STS_T32A, (uint32_t) (&(thiscpu->cpu_ts)),
 					sizeof(struct Taskstate) - 1, 0);
-	gdt[GD_TSS0 >> 3].sd_s = 0;
+	gdt[(GD_TSS0 >> 3) + cpu_id].sd_s = 0;
 
 	// Load the TSS selector (like other segment selectors, the
 	// bottom three bits are special; we leave them 0)
-	ltr(GD_TSS0);
+	ltr(GD_TSS0 + 8 * cpu_id);
 
 	// Load the IDT
 	lidt(&idt_pd);
@@ -230,7 +231,6 @@ trap_dispatch(struct Trapframe *tf)
 	// LAB 4: Your code here.
 
 	// Unexpected trap: The user process or the kernel has a bug.
-	print_trapframe(tf);
 	// Handle processor exceptions.
 	// Page fault
 	switch (tf->tf_trapno)
@@ -281,13 +281,14 @@ trap(struct Trapframe *tf)
 	// the interrupt path.
 	assert(!(read_eflags() & FL_IF));
 
-	cprintf("Incoming TRAP frame at %p\n", tf);
 	if ((tf->tf_cs & 3) == 3) {
-		// Trapped from user mode.
+		// Trapped from user mode.	
+		// (if it is in kernel mode, the low 2 bits are 0)
 		// Acquire the big kernel lock before doing any
 		// serious kernel work.
 		// LAB 4: Your code here.
 		assert(curenv);
+		lock_kernel();
 
 		// Garbage collect if current enviroment is a zombie
 		if (curenv->env_status == ENV_DYING) {
